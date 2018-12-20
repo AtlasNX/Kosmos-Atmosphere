@@ -13,19 +13,21 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
- 
-#ifndef ATMOSPHERE_H
-#define ATMOSPHERE_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "utils.h"
+#include "lp0.h"
+#include "emc.h"
+#include "pmc.h"
+#include "timer.h"
 
-#include "atmosphere/version.h"
-#include "atmosphere/target_fw.h"
-
-#ifdef __cplusplus
+void emc_configure_pmacro_training(void) {
+    /* Set DISABLE_CFG_BYTEN for all N. */
+    EMC_PMACRO_CFG_PM_GLOBAL_0_0 = 0xFF0000;
+    
+    /* Set CHN_TRAINING_E_WRPTR for channel 0 + channel 1. */
+    EMC_PMACRO_TRAINING_CTRL_0_0 = 8;
+    EMC_PMACRO_TRAINING_CTRL_1_0 = 8;
+    
+    /* Clear DISABLE_CFG_BYTEN for all N. */
+    EMC_PMACRO_CFG_PM_GLOBAL_0_0 = 0x0;
 }
-#endif
-
-#endif

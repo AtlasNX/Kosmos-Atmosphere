@@ -14,13 +14,22 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
  
-#ifndef EXOSPHERE_BPMPFW_LP0_H
-#define EXOSPHERE_BPMPFW_LP0_H
+#ifndef EXOSPHERE_WARMBOOT_BIN_LP0_H
+#define EXOSPHERE_WARMBOOT_BIN_LP0_H
 
 #include "utils.h"
 
-void lp0_entry_main(void);
+/* WBT0 */
+#define WARMBOOT_MAGIC 0x30544257
 
-void reboot(void);
+typedef struct {
+    uint32_t magic;
+    uint32_t target_firmware;
+    uint32_t padding[2];
+} warmboot_metadata_t;
+
+void lp0_entry_main(warmboot_metadata_t *meta);
+
+void __attribute__((noreturn)) reboot(void);
 
 #endif

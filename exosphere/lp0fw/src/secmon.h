@@ -14,18 +14,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
  
-#ifndef ATMOSPHERE_H
-#define ATMOSPHERE_H
+#ifndef EXOSPHERE_WARMBOOT_BIN_SECMON_H
+#define EXOSPHERE_WARMBOOT_BIN_SECMON_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdint.h>
 
-#include "atmosphere/version.h"
-#include "atmosphere/target_fw.h"
+#include "utils.h"
 
-#ifdef __cplusplus
-}
-#endif
+void secmon_restore_to_tzram(const uint32_t target_firmware);
 
 #endif

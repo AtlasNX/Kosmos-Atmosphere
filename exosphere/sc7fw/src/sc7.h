@@ -14,18 +14,13 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
  
-#ifndef ATMOSPHERE_H
-#define ATMOSPHERE_H
+#ifndef EXOSPHERE_BPMPFW_SC7_H
+#define EXOSPHERE_BPMPFW_SC7_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "utils.h"
 
-#include "atmosphere/version.h"
-#include "atmosphere/target_fw.h"
+void sc7_entry_main(void);
 
-#ifdef __cplusplus
-}
-#endif
+void reboot(void);
 
 #endif

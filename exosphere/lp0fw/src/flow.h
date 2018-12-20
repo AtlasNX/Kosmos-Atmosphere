@@ -14,18 +14,22 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
  
-#ifndef ATMOSPHERE_H
-#define ATMOSPHERE_H
+#ifndef EXOSPHERE_WARMBOOT_BIN_FLOW_CTLR_H
+#define EXOSPHERE_WARMBOOT_BIN_FLOW_CTLR_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdint.h>
+#include <stdbool.h>
 
-#include "atmosphere/version.h"
-#include "atmosphere/target_fw.h"
+#include "utils.h"
 
-#ifdef __cplusplus
-}
-#endif
+#define FLOW_BASE (0x60007000)
+
+#define MAKE_FLOW_REG(ofs) MAKE_REG32(FLOW_BASE + ofs)
+
+#define FLOW_CTLR_HALT_COP_EVENTS_0      MAKE_FLOW_REG(0x004)
+#define FLOW_CTLR_RAM_REPAIR_0           MAKE_FLOW_REG(0x040)
+#define FLOW_CTLR_BPMP_CLUSTER_CONTROL_0 MAKE_FLOW_REG(0x098)
+
+void flow_perform_ram_repair(void);
 
 #endif

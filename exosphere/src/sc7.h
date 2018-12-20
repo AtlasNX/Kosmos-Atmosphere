@@ -14,18 +14,15 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
  
-#ifndef ATMOSPHERE_H
-#define ATMOSPHERE_H
+#ifndef EXOSPHERE_SC7_H
+#define EXOSPHERE_SC7_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdint.h>
 
-#include "atmosphere/version.h"
-#include "atmosphere/target_fw.h"
+/* Exosphere Deep Sleep Entry implementation. */
 
-#ifdef __cplusplus
-}
-#endif
+#define LP0_TZRAM_SAVE_SIZE 0xE000
+
+uint32_t cpu_suspend(uint64_t power_state, uint64_t entrypoint, uint64_t argument);
 
 #endif

@@ -14,18 +14,29 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
  
-#ifndef ATMOSPHERE_H
-#define ATMOSPHERE_H
+#ifndef EXOSPHERE_WARMBOOT_BIN_MISC_H
+#define EXOSPHERE_WARMBOOT_BIN_MISC_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdint.h>
 
-#include "atmosphere/version.h"
-#include "atmosphere/target_fw.h"
+#include "utils.h"
 
-#ifdef __cplusplus
-}
-#endif
+#define MISC_BASE  (0x70000000)
+
+#define MAKE_MISC_REG(n) MAKE_REG32(MISC_BASE + n)
+
+#define APB_MISC_PP_CONFIG_CTL_0 MAKE_MISC_REG(0x024)
+
+#define APB_MISC_GP_ASDBGREG_0 MAKE_MISC_REG(0x810)
+
+#define PINMUX_AUX_PWR_I2C_SCL_0 MAKE_MISC_REG(0x30DC)
+#define PINMUX_AUX_PWR_I2C_SDA_0 MAKE_MISC_REG(0x30E0)
+#define PINMUX_AUX_DVFS_PWM_0    MAKE_MISC_REG(0x3184)
+
+#define PINMUX_AUX_GPIO_PA6_0 MAKE_MISC_REG(0x3244)
+
+void misc_configure_device_dbg_settings(void);
+
+void misc_restore_ram_svop(void);
 
 #endif

@@ -14,18 +14,18 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
  
-#ifndef ATMOSPHERE_H
-#define ATMOSPHERE_H
+#include <stdint.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "utils.h"
+#include "flow.h"
 
-#include "atmosphere/version.h"
-#include "atmosphere/target_fw.h"
-
-#ifdef __cplusplus
+void flow_perform_ram_repair(void) {
+    /* Perform repair only if not active cluster. */
+    if (!(FLOW_CTLR_BPMP_CLUSTER_CONTROL_0 & 1)) {
+        /* Set REQ, to begin RAM repair. */
+        FLOW_CTLR_RAM_REPAIR_0 = 1;
+        
+        /* Wait for STS to say RAM repair has completed. */
+        while (!(FLOW_CTLR_RAM_REPAIR_0 & 2)) { }
+    }
 }
-#endif
-
-#endif

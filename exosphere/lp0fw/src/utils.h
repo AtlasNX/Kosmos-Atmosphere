@@ -14,18 +14,26 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
  
-#ifndef ATMOSPHERE_H
-#define ATMOSPHERE_H
+#ifndef EXOSPHERE_WARMBOOT_BIN_UTILS_H
+#define EXOSPHERE_WARMBOOT_BIN_UTILS_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <atmosphere.h>
 
-#include "atmosphere/version.h"
-#include "atmosphere/target_fw.h"
+#define BIT(n)      (1u   << (n))
+#define BITL(n)     (1ull << (n))
+#define MASK(n)     (BIT(n) - 1)
+#define MASKL(n)    (BITL(n) - 1)
+#define MASK2(a,b)  (MASK(a) & ~MASK(b))
+#define MASK2L(a,b) (MASKL(a) & ~MASKL(b))
 
-#ifdef __cplusplus
-}
-#endif
+#define MAKE_REG32(a)   (*(volatile uint32_t *)(a))
+
+#define ALIGN(m)        __attribute__((aligned(m)))
+#define PACKED          __attribute__((packed))
+
+#define ALINLINE        __attribute__((always_inline))
 
 #endif

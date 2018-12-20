@@ -14,18 +14,27 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
  
-#ifndef ATMOSPHERE_H
-#define ATMOSPHERE_H
+.section .text.start
+.align 4
+.global _start
+_start:
+    b crt0
+.global _reboot
+    b reboot
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+.global crt0
+.type crt0, %function
+crt0:
+    @ setup to call sc7_entry_main
+    msr cpsr_cxsf, #0xD3
+    ldr sp, =__stack_top__
+    ldr lr, =reboot
+    b sc7_entry_main
 
-#include "atmosphere/version.h"
-#include "atmosphere/target_fw.h"
 
-#ifdef __cplusplus
-}
-#endif
-
-#endif
+.global spinlock_wait
+.type spinlock_wait, %function
+spinlock_wait:
+    subs r0, r0, #1
+    bgt spinlock_wait
+    bx lr
