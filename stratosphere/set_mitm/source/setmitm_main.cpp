@@ -64,8 +64,6 @@ void __appInit(void) {
     if (R_FAILED(rc)) {
         fatalSimple(rc);
     }
-    
-    CheckAtmosphereVersion(CURRENT_ATMOSPHERE_VERSION);
 }
 
 void __appExit(void) {

@@ -80,8 +80,6 @@ void __appInit(void) {
     if (R_FAILED(rc))  {
         fatalSimple(0xCAFE << 4 | 2);
     }
-    
-    CheckAtmosphereVersion(CURRENT_ATMOSPHERE_VERSION);
 }
 
 void __appExit(void) {
