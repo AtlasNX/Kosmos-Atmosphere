@@ -6,7 +6,7 @@ ifneq (, $(strip $(shell git status --porcelain 2>/dev/null)))
     AMSREV := $(AMSREV)-dirty
 endif
 
-all: fusee stratosphere exosphere thermosphere
+all: fusee stratosphere exosphere thermosphere troposphere
 
 thermosphere:
 	$(MAKE) -C thermosphere all
@@ -16,6 +16,9 @@ exosphere: thermosphere
 
 stratosphere: exosphere
 	$(MAKE) -C stratosphere all
+
+troposphere: stratosphere
+	$(MAKE) -C troposphere all
 
 fusee: exosphere stratosphere
 	$(MAKE) -C $@ all
@@ -39,16 +42,20 @@ dist: all
 	rm -rf out
 	mkdir atmosphere-$(AMSVER)
 	mkdir atmosphere-$(AMSVER)/atmosphere
+	mkdir atmosphere-$(AMSVER)/switch
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/titles/0100000000000036
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/titles/0100000000000034
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032
+	cp fusee/fusee-primary/fusee-primary.bin atmosphere-$(AMSVER)/atmosphere/reboot_payload.bin
 	cp fusee/fusee-secondary/fusee-secondary.bin atmosphere-$(AMSVER)/atmosphere/fusee-secondary.bin
 	cp common/defaults/BCT.ini atmosphere-$(AMSVER)/atmosphere/BCT.ini
 	cp common/defaults/loader.ini atmosphere-$(AMSVER)/atmosphere/loader.ini
+	cp common/defaults/system_settings.ini atmosphere-$(AMSVER)/atmosphere/system_settings.ini
 	cp -r common/defaults/kip_patches atmosphere-$(AMSVER)/atmosphere/kip_patches
 	cp stratosphere/creport/creport.nsp atmosphere-$(AMSVER)/atmosphere/titles/0100000000000036/exefs.nsp
 	cp stratosphere/fatal/fatal.nsp atmosphere-$(AMSVER)/atmosphere/titles/0100000000000034/exefs.nsp
 	cp stratosphere/set_mitm/set_mitm.nsp atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032/exefs.nsp
+	cp troposphere/reboot_to_payload/reboot_to_payload.nro atmosphere-$(AMSVER)/switch/reboot_to_payload.nro
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032/flags
 	touch atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032/flags/boot2.flag
 	cd atmosphere-$(AMSVER); zip -r ../atmosphere-$(AMSVER).zip ./*; cd ../;

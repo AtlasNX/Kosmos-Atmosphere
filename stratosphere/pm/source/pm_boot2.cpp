@@ -25,6 +25,21 @@
 #include <stratosphere.hpp>
 #include "pm_boot2.hpp"
 #include "pm_registration.hpp"
+#include "pm_boot_mode.hpp"
+
+static std::vector<Boot2KnownTitleId> g_boot2_titles;
+
+static void ClearLaunchedTitles() {
+    g_boot2_titles.clear();
+}
+
+static void SetLaunchedTitle(Boot2KnownTitleId title_id) {
+    g_boot2_titles.push_back(title_id);
+}
+
+static bool HasLaunchedTitle(Boot2KnownTitleId title_id) {
+    return std::find(g_boot2_titles.begin(), g_boot2_titles.end(), title_id) != g_boot2_titles.end();
+}
 
 static bool IsHexadecimal(const char *str) {
     while (*str) {
@@ -39,6 +54,11 @@ static bool IsHexadecimal(const char *str) {
 
 static void LaunchTitle(Boot2KnownTitleId title_id, FsStorageId storage_id, u32 launch_flags, u64 *pid) {
     u64 local_pid;
+    
+    /* Don't launch a title twice during boot2. */
+    if (HasLaunchedTitle(title_id)) {
+        return;
+    }
     
     Result rc = Registration::LaunchProcessByTidSid(Registration::TidSid{(u64)title_id, storage_id}, launch_flags, &local_pid);
     switch (rc) {
@@ -61,10 +81,47 @@ static void LaunchTitle(Boot2KnownTitleId title_id, FsStorageId storage_id, u32 
     if (pid) {
         *pid = local_pid;
     }
+    
+    if (R_SUCCEEDED(rc)) {
+        SetLaunchedTitle(title_id);
+    }
 }
 
-static bool ShouldForceMaintenanceMode() {
-    /* TODO: Contact set:sys, retrieve boot!force_maintenance, read plus/minus buttons. */
+static bool GetGpioPadLow(GpioPadName pad) {
+    GpioPadSession button;
+    if (R_FAILED(gpioOpenSession(&button, pad))) {
+        return false;
+    }
+    
+    /* Ensure we close even on early return. */
+    ON_SCOPE_EXIT { gpioPadClose(&button); };
+    
+    /* Set direction input. */
+    gpioPadSetDirection(&button, GpioDirection_Input);
+    
+    GpioValue val;
+    return R_SUCCEEDED(gpioPadGetValue(&button, &val)) && val == GpioValue_Low;
+}
+
+static bool IsMaintenanceMode() {
+    /* Contact set:sys, retrieve boot!force_maintenance. */
+    if (R_SUCCEEDED(setsysInitialize())) {
+        ON_SCOPE_EXIT { setsysExit(); };
+        
+        u8 force_maintenance = 1;
+        setsysGetSettingsItemValue("boot", "force_maintenance", &force_maintenance, sizeof(force_maintenance));
+        if (force_maintenance != 0) {
+            return true;
+        }
+    }
+
+    /* Contact GPIO, read plus/minus buttons. */
+    if (R_SUCCEEDED(gpioInitialize())) {
+        ON_SCOPE_EXIT { gpioExit(); };
+        
+        return GetGpioPadLow(GpioPadName_ButtonVolUp) && GetGpioPadLow(GpioPadName_ButtonVolDown);
+    }
+    
     return false;
 }
 
@@ -123,21 +180,28 @@ static void MountSdCard() {
     fsdevMountSdmc();
 }
 
-void EmbeddedBoot2::Main() {
-    /* Wait until fs.mitm has installed itself. We want this to happen as early as possible. */
-    bool fs_mitm_installed = false;
+static void WaitForMitm(const char *service) {
+    bool mitm_installed = false;
 
     Result rc = smManagerAmsInitialize();
     if (R_FAILED(rc)) {
         std::abort();
     }
-    while (R_FAILED((rc = smManagerAmsHasMitm(&fs_mitm_installed, "fsp-srv"))) || !fs_mitm_installed) {
+    while (R_FAILED((rc = smManagerAmsHasMitm(&mitm_installed, service))) || !mitm_installed) {
         if (R_FAILED(rc)) {
             std::abort();
         }
-        svcSleepThread(1000ull);
+        svcSleepThread(1000000ull);
     }
     smManagerAmsExit();
+}
+
+void EmbeddedBoot2::Main() {
+    /* Wait until fs.mitm has installed itself. We want this to happen as early as possible. */
+    WaitForMitm("fsp-srv");
+    
+    /* Clear titles. */
+    ClearLaunchedTitles();
 
     /* psc, bus, pcv is the minimal set of required titles to get SD card. */ 
     /* bus depends on pcie, and pcv depends on settings. */
@@ -155,13 +219,22 @@ void EmbeddedBoot2::Main() {
     /* At this point, the SD card can be mounted. */
     MountSdCard();
     
+    /* Find out whether we are maintenance mode. */
+    bool maintenance = IsMaintenanceMode();
+    if (maintenance) {
+        BootModeService::SetMaintenanceBootForEmbeddedBoot2();
+    }
+    
+    /* Launch set:mitm, wait for it. */
+    LaunchTitle(Boot2KnownTitleId::ams_set_mitm, FsStorageId_None, 0, NULL);
+    WaitForMitm("set:sys");
+    
     /* Launch usb. */
     LaunchTitle(Boot2KnownTitleId::usb, FsStorageId_NandSystem, 0, NULL);
     /* Launch tma. */
     LaunchTitle(Boot2KnownTitleId::tma, FsStorageId_NandSystem, 0, NULL);
     
     /* Launch default programs. */
-    bool maintenance = ShouldForceMaintenanceMode();
     for (auto &launch_program : g_additional_launch_programs) {
         if (!maintenance || std::get<bool>(launch_program)) {
             LaunchTitle(std::get<Boot2KnownTitleId>(launch_program), FsStorageId_NandSystem, 0, NULL);
@@ -202,4 +275,7 @@ void EmbeddedBoot2::Main() {
         
     /* We no longer need the SD card. */
     fsdevUnmountAll();
+    
+    /* Clear titles. */
+    ClearLaunchedTitles();
 }

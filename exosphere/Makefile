@@ -75,14 +75,16 @@ export TOPDIR	:=	$(CURDIR)
 
 export VPATH	:=	$(foreach dir,$(SOURCES),$(CURDIR)/$(dir)) \
 			$(foreach dir,$(DATA),$(CURDIR)/$(dir)) \
-			$(TOPDIR)/sc7fw
+			$(TOPDIR)/lp0fw \
+			$(TOPDIR)/sc7fw \
+			$(TOPDIR)/rebootstub
 
 export DEPSDIR	:=	$(CURDIR)/$(BUILD)
 
 CFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.c)))
 CPPFILES	:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.cpp)))
 SFILES		:=	$(foreach dir,$(SOURCES),$(notdir $(wildcard $(dir)/*.s)))
-BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*))) sc7fw.bin
+BINFILES	:=	$(foreach dir,$(DATA),$(notdir $(wildcard $(dir)/*.*))) sc7fw.bin lp0fw.bin rebootstub.bin
 
 #---------------------------------------------------------------------------------
 # use CXX for linking C++ projects, CC for standard C
@@ -109,7 +111,7 @@ export INCLUDE	:=	$(foreach dir,$(INCLUDES),-I$(CURDIR)/$(dir)) \
 
 export LIBPATHS	:=	$(foreach dir,$(LIBDIRS),-L$(dir)/lib)
 
-.PHONY: $(BUILD) build_sc7fw clean all
+.PHONY: $(BUILD) build_sc7fw build_lp0fw build_rebootstub clean all
 
 #---------------------------------------------------------------------------------
 all: $(BUILD)
@@ -117,7 +119,13 @@ all: $(BUILD)
 check_sc7fw:
 	@$(MAKE) -C sc7fw all
 
-$(BUILD): check_sc7fw
+check_lp0fw:
+	@$(MAKE) -C lp0fw all
+
+check_rebootstub:
+	@$(MAKE) -C rebootstub all
+
+$(BUILD): check_sc7fw check_lp0fw check_rebootstub
 	@[ -d $@ ] || mkdir -p $@
 	@$(MAKE) --no-print-directory -C $(BUILD) -f $(CURDIR)/Makefile
 
@@ -125,6 +133,8 @@ $(BUILD): check_sc7fw
 clean:
 	@echo clean ...
 	@$(MAKE) -C $(TOPDIR)/sc7fw clean
+	@$(MAKE) -C $(TOPDIR)/lp0fw clean
+	@$(MAKE) -C $(TOPDIR)/rebootstub clean
 	@rm -fr $(BUILD) $(TARGET).bin $(TARGET).elf
 
 

@@ -155,8 +155,15 @@ void CrashReport::HandleException(DebugEventInfo &d) {
         case DebugExceptionType::UserBreak:
             this->result = (Result)CrashReportResult::UserBreak;
             /* Try to parse out the user break result. */
-            if (kernelAbove500() && IsAddressReadable(d.info.exception.specific.user_break.address, sizeof(this->result))) {
-                svcReadDebugProcessMemory(&this->result, this->debug_handle, d.info.exception.specific.user_break.address, sizeof(this->result));
+            if (kernelAbove500()) {
+                Result user_result = 0;
+                if (IsAddressReadable(d.info.exception.specific.user_break.address, sizeof(user_result))) {
+                    svcReadDebugProcessMemory(&user_result, this->debug_handle, d.info.exception.specific.user_break.address, sizeof(user_result));
+                }
+                /* Only copy over the user result if it gives us information (as by default nnSdk uses the success code, which is confusing). */
+                if (R_FAILED(user_result)) {
+                    this->result = user_result;
+                }
             }
             break;
         case DebugExceptionType::BadSvc:

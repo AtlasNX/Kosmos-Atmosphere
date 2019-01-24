@@ -26,6 +26,14 @@
 #include "utils.h"
 #include "masterkey.h"
 #include "exocfg.h"
+#include "smc_ams.h"
+#include "arm.h"
+
+#define u8 uint8_t
+#define u32 uint32_t
+#include "rebootstub_bin.h"
+#undef u8
+#undef u32
 
 static bool g_battery_profile = false;
 static bool g_debugmode_override_user = false, g_debugmode_override_priv = false;
@@ -35,10 +43,39 @@ uint32_t configitem_set(bool privileged, ConfigItem item, uint64_t value) {
         case CONFIGITEM_BATTERYPROFILE:
             g_battery_profile = (value != 0);
             break;
-        case CONFIGITEM_NEEDS_REBOOT_TO_RCM:
-            /* Force a reboot to RCM, if requested. */
-            if (value != 0) {
-                MAKE_REG32(MMIO_GET_DEVICE_ADDRESS(MMIO_DEVID_RTC_PMC) + 0x450ull) = 0x2;
+        case CONFIGITEM_NEEDS_REBOOT:
+            /* Force a reboot, if requested. */
+            {
+                switch (value) {
+                    case REBOOT_KIND_NO_REBOOT:
+                        return 0;
+                    case REBOOT_KIND_TO_RCM:
+                        /* Set reboot kind = rcm. */
+                        MAKE_REG32(MMIO_GET_DEVICE_ADDRESS(MMIO_DEVID_RTC_PMC) + 0x450ull) = 0x2;
+                        break;
+                    case REBOOT_KIND_TO_WB_PAYLOAD:
+                        /* Set reboot kind = warmboot. */
+                        MAKE_REG32(MMIO_GET_DEVICE_ADDRESS(MMIO_DEVID_RTC_PMC) + 0x450ull) = 0x1;
+                        /* Patch SDRAM init to perform an SVC immediately after second write */
+                        MAKE_REG32(MMIO_GET_DEVICE_ADDRESS(MMIO_DEVID_RTC_PMC) + 0x634ull) = 0x2E38DFFF;
+                        MAKE_REG32(MMIO_GET_DEVICE_ADDRESS(MMIO_DEVID_RTC_PMC) + 0x638ull) = 0x6001DC28;
+                        /* Set SVC handler to jump to reboot stub in IRAM. */
+                        MAKE_REG32(MMIO_GET_DEVICE_ADDRESS(MMIO_DEVID_RTC_PMC) + 0x520ull) = 0x4003F000;
+                        MAKE_REG32(MMIO_GET_DEVICE_ADDRESS(MMIO_DEVID_RTC_PMC) + 0x53Cull) = 0x6000F208;
+                        
+                        /* Copy reboot stub payload. */
+                        ams_map_irampage(0x4003F000);
+                        for (unsigned int i = 0; i < rebootstub_bin_size; i += 4) {
+                            MAKE_REG32(MMIO_GET_DEVICE_ADDRESS(MMIO_DEVID_AMS_IRAM_PAGE) + i) = read32le(rebootstub_bin, i);
+                        }
+                        ams_unmap_irampage();
+                        
+                        /* Ensure stub is flushed. */
+                        flush_dcache_all();
+                        break;
+                    default:
+                        return 2;
+                }
                 MAKE_REG32(MMIO_GET_DEVICE_ADDRESS(MMIO_DEVID_RTC_PMC) + 0x400ull) = 0x10;
                 while (1) { }
             }
@@ -187,8 +224,8 @@ uint32_t configitem_get(bool privileged, ConfigItem item, uint64_t *p_outvalue) 
                           ((uint64_t)(exosphere_get_target_firmware() & 0xFF) << 8ull) |
                           ((uint64_t)(mkey_get_revision() & 0xFF) << 0ull);
             break;
-        case CONFIGITEM_NEEDS_REBOOT_TO_RCM:
-            /* UNOFFICIAL: The fact that we are executing means we aren't in the process of rebooting to rcm. */
+        case CONFIGITEM_NEEDS_REBOOT:
+            /* UNOFFICIAL: The fact that we are executing means we aren't in the process of rebooting. */
             *p_outvalue = 0;
             break;
         default:
