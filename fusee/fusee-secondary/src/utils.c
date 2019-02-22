@@ -29,6 +29,14 @@
 #include <stdio.h>
 #include <inttypes.h>
 
+#define u8 uint8_t
+#define u32 uint32_t
+#include "fusee_primary_bin.h"
+#include "sept_primary_bin.h"
+#include "rebootstub_bin.h"
+#undef u8
+#undef u32
+
 void wait(uint32_t microseconds) {
     uint32_t old_time = TIMERUS_CNTR_1US_0;
     while (TIMERUS_CNTR_1US_0 - old_time <= microseconds) {
@@ -58,12 +66,78 @@ __attribute__((noreturn)) void pmc_reboot(uint32_t scratch0) {
     }
 }
 
+__attribute__((noreturn)) static void reboot_to_payload(void) {
+    /* Patch SDRAM init to perform an SVC immediately after second write */
+    APBDEV_PMC_SCRATCH45_0 = 0x2E38DFFF;
+    APBDEV_PMC_SCRATCH46_0 = 0x6001DC28;
+    /* Set SVC handler to jump to reboot stub in IRAM. */
+    APBDEV_PMC_SCRATCH33_0 = 0x4003F000;
+    APBDEV_PMC_SCRATCH40_0 = 0x6000F208;
+    
+    /* Copy reboot stub into IRAM high. */
+    for (size_t i = 0; i < rebootstub_bin_size; i += sizeof(uint32_t)) {
+        write32le((void *)0x4003F000, i, read32le(rebootstub_bin, i));
+    }
+    
+    /* Trigger warm reboot. */
+    pmc_reboot(1 << 0);
+    while (true) { }
+}
+
+__attribute__((noreturn)) void reboot_to_fusee_primary(void) {
+    /* Copy fusee-primary into IRAM low. */
+    for (size_t i = 0; i < fusee_primary_bin_size; i += sizeof(uint32_t)) {
+        write32le((void *)0x40010000, i, read32le(fusee_primary_bin, i));
+    }
+    
+    reboot_to_payload();
+}
+
+__attribute__((noreturn)) void reboot_to_sept(const void *tsec_fw, size_t tsec_fw_length, const void *stage2, size_t stage2_size) {
+    
+    /* Copy tsec firmware. */
+    for (size_t i = 0; i < tsec_fw_length; i += sizeof(uint32_t)) {
+        write32le((void *)0x40010F00, i, read32le(tsec_fw, i));
+    }
+    MAKE_REG32(0x40010EFC) = tsec_fw_length;
+    
+    /* Copy stage 2. */
+    for (size_t i = 0; i < stage2_size; i += sizeof(uint32_t)) {
+        write32le((void *)0x40016FE0, i, read32le(stage2, i));
+    }
+    
+    /* Copy sept into IRAM low. */
+    for (size_t i = 0; i < sept_primary_bin_size; i += sizeof(uint32_t)) {
+        write32le((void *)0x4003F000, i, read32le(sept_primary_bin, i));
+    }
+    
+    /* Patch SDRAM init to perform an SVC immediately after second write */
+    APBDEV_PMC_SCRATCH45_0 = 0x2E38DFFF;
+    APBDEV_PMC_SCRATCH46_0 = 0x6001DC28;
+    /* Set SVC handler to jump to reboot stub in IRAM. */
+    APBDEV_PMC_SCRATCH33_0 = 0x4003F000;
+    APBDEV_PMC_SCRATCH40_0 = 0x6000F208;
+    
+    /* Trigger warm reboot. */
+    pmc_reboot(1 << 0);
+    while (true) { }
+}
+
+__attribute__((noreturn)) void reboot_to_iram_payload(void *payload, size_t payload_size) {
+    /* Copy sept into IRAM low. */
+    for (size_t i = 0; i < payload_size; i += sizeof(uint32_t)) {
+        write32le((void *)0x40010000, i, read32le(payload, i));
+    }
+    
+    reboot_to_payload();
+}
+
 __attribute__((noreturn)) void wait_for_button_and_reboot(void) {
     uint32_t button;
     while (true) {
         button = btn_read();
         if (button & BTN_POWER) {
-            pmc_reboot(1 << 1);
+            reboot_to_fusee_primary();
         }
     }
 }

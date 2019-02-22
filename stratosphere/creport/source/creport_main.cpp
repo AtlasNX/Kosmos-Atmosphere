@@ -21,6 +21,7 @@
 #include <malloc.h>
 
 #include <switch.h>
+#include <stratosphere/firmware_version.hpp>
 
 #include "creport_crash_report.hpp"
 
@@ -54,6 +55,8 @@ void __libnx_initheap(void) {
 
 void __appInit(void) {
     Result rc;
+    
+    SetFirmwareVersionForLibnx();
 
     rc = smInitialize();
     if (R_FAILED(rc)) {

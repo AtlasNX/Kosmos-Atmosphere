@@ -149,7 +149,7 @@ int main(void) {
     
     /* Say hello. */
     print(SCREEN_LOG_LEVEL_MANDATORY, "Welcome to Atmosph\xe8re Fus\xe9" "e!\n");
-    print(SCREEN_LOG_LEVEL_DEBUG, "Using color linear framebuffer at 0x%p!\n", g_framebuffer);    
+    print(SCREEN_LOG_LEVEL_DEBUG, "Using color linear framebuffer at 0x%p!\n", g_framebuffer);
     
     /* Load the loader payload into DRAM. */
     load_stage2(bct0);
@@ -163,7 +163,7 @@ int main(void) {
     stage2_args->display_initialized = false;
     strcpy(stage2_args->bct0, bct0);
     g_chainloader_argc = 2;
-
+    
     /* Wait a while. */
     mdelay(1000);
     

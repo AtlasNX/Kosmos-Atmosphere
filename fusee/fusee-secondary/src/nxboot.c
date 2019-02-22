@@ -28,6 +28,7 @@
 #include "mc.h"
 #include "se.h"
 #include "pmc.h"
+#include "emc.h"
 #include "fuse.h"
 #include "i2c.h"
 #include "ips.h"
@@ -37,20 +38,22 @@
 #include "flow.h"
 #include "timers.h"
 #include "key_derivation.h"
+#include "masterkey.h"
 #include "package1.h"
 #include "package2.h"
 #include "smmu.h"
 #include "tsec.h"
 #include "lp0.h"
 #include "loader.h"
-#include "splash_screen.h"
 #include "exocfg.h"
 #include "display/video_fb.h"
 #include "lib/ini.h"
+#include "splash_screen.h"
 
 #define u8 uint8_t
 #define u32 uint32_t
 #include "exosphere_bin.h"
+#include "sept_secondary_enc.h"
 #include "lp0fw_bin.h"
 #include "lib/log.h"
 #undef u8
@@ -167,15 +170,17 @@ static uint32_t nxboot_get_target_firmware(const void *package1loader) {
                 fatal_error("[NXBOOT]: Unable to identify package1!\n");
             }
         }
+        case 0x0F:
+            return ATMOSPHERE_TARGET_FIRMWARE_700;
         default:
-            return 0;
+            fatal_error("[NXBOOT]: Unable to identify package1!\n");
     }
 }
 
 static void nxboot_configure_exosphere(uint32_t target_firmware, unsigned int keygen_type) {
     exosphere_config_t exo_cfg = {0};
 
-    exo_cfg.magic = MAGIC_EXOSPHERE_BOOTCONFIG;
+    exo_cfg.magic = MAGIC_EXOSPHERE_CONFIG;
     exo_cfg.target_firmware = target_firmware;
     if (keygen_type) {
         exo_cfg.flags = EXOSPHERE_FLAGS_DEFAULT | EXOSPHERE_FLAG_PERFORM_620_KEYGEN;
@@ -213,7 +218,7 @@ static void nxboot_configure_stratosphere(uint32_t target_firmware) {
     }
 }
 
-static void nxboot_set_bootreason() {
+static void nxboot_set_bootreason(void *bootreason_base) {
     boot_reason_t boot_reason = {0};
     FILE *boot0; 
     nvboot_config_table *bct;
@@ -265,7 +270,7 @@ static void nxboot_set_bootreason() {
         boot_reason.boot_reason_state = 0x04;
     
     /* Set in memory. */
-    memcpy((void *)MAILBOX_NX_BOOTLOADER_BOOT_REASON_BASE, &boot_reason, sizeof(boot_reason));
+    memcpy(bootreason_base, &boot_reason, sizeof(boot_reason));
     
     /* Clean up. */
     free(bct);
@@ -304,6 +309,12 @@ static void nxboot_move_bootconfig() {
     
     /* Clean up. */
     free(bootconfig);
+}
+
+static bool get_and_clear_has_run_sept(void) {
+    bool has_run_sept = (MAKE_EMC_REG(EMC_SCRATCH0) & 0x80000000) != 0;
+    MAKE_EMC_REG(EMC_SCRATCH0) &= ~0x80000000;
+    return has_run_sept;
 }
 
 /* This is the main function responsible for booting Horizon. */
@@ -382,7 +393,7 @@ uint32_t nxboot_main(void) {
     /* Read the TSEC firmware from a file, otherwise from PK1L. */
     if (loader_ctx->tsecfw_path[0] != '\0') {
         tsec_fw_size = get_file_size(loader_ctx->tsecfw_path);
-        if ((tsec_fw_size != 0) && (tsec_fw_size != 0xF00 && tsec_fw_size != 0x2900)) {
+        if ((tsec_fw_size != 0) && (tsec_fw_size != 0xF00 && tsec_fw_size != 0x2900 && tsec_fw_size != 0x3000)) {
             fatal_error("[NXBOOT]: TSEC firmware from %s has a wrong size!\n", loader_ctx->tsecfw_path);
         } else if (tsec_fw_size == 0) {
             fatal_error("[NXBOOT]: Could not read the TSEC firmware from %s!\n", loader_ctx->tsecfw_path);
@@ -401,19 +412,31 @@ uint32_t nxboot_main(void) {
         if (!package1_get_tsec_fw(&tsec_fw, package1loader, package1loader_size)) {
             fatal_error("[NXBOOT]: Failed to read the TSEC firmware from Package1loader!\n");
         }
-        if (target_firmware >= ATMOSPHERE_TARGET_FIRMWARE_620) {
+        if (target_firmware == ATMOSPHERE_TARGET_FIRMWARE_700) { 
+            tsec_fw_size = 0x3000;
+        } else if (target_firmware == ATMOSPHERE_TARGET_FIRMWARE_620) {
             tsec_fw_size = 0x2900;
         } else {
             tsec_fw_size = 0xF00;
         }
     }
-    
-    print(SCREEN_LOG_LEVEL_MANDATORY, "[NXBOOT]: Loaded firmware from eMMC...\n");
+
+    print(SCREEN_LOG_LEVEL_INFO, "[NXBOOT]: Loaded firmware from eMMC...\n");
 
     /* Get the TSEC keys. */
     uint8_t tsec_key[0x10] = {0};
-    uint8_t tsec_root_key[0x10] = {0};
-    if (target_firmware >= ATMOSPHERE_TARGET_FIRMWARE_620) {
+    uint8_t tsec_root_keys[0x20][0x10] = {0};
+    if (target_firmware >= ATMOSPHERE_TARGET_FIRMWARE_700) {
+        /* Detect whether we need to run sept-secondary in order to derive keys. */
+        if (!get_and_clear_has_run_sept()) {
+            reboot_to_sept(tsec_fw, tsec_fw_size, sept_secondary_enc, sept_secondary_enc_size);
+        } else {
+            if (mkey_detect_revision(fuse_get_retail_type() != 0) != 0) {
+                fatal_error("[NXBOOT]: Sept derived incorrect keys!\n");
+            }
+        }
+        get_and_clear_has_run_sept();
+    } else if (target_firmware == ATMOSPHERE_TARGET_FIRMWARE_620) {
         uint8_t tsec_keys[0x20] = {0};
         
         /* Emulate the TSEC payload on 6.2.0+. */
@@ -421,7 +444,7 @@ uint32_t nxboot_main(void) {
         
         /* Copy back the keys. */
         memcpy((void *)tsec_key, (void *)tsec_keys, 0x10);
-        memcpy((void *)tsec_root_key, (void *)tsec_keys + 0x10, 0x10);
+        memcpy((void *)tsec_root_keys, (void *)tsec_keys + 0x10, 0x10);
     } else {
         /* Run the TSEC payload and get the key. */
         if (tsec_get_key(tsec_key, 1, tsec_fw, tsec_fw_size) != 0) {
@@ -429,19 +452,25 @@ uint32_t nxboot_main(void) {
         }
     }
     
-    /* Derive keydata. */
+    //fatal_error("Ran sept!");
+    /* Display splash screen. */
+    display_splash_screen_bmp(loader_ctx->custom_splash_path, (void *)0xC0000000);
+    
+    /* Derive keydata. If on 7.0.0+, sept has already derived keys for us. */
     unsigned int keygen_type = 0;
-    if (derive_nx_keydata(target_firmware, g_keyblobs, available_revision, tsec_key, tsec_root_key, &keygen_type) != 0) {
-        fatal_error("[NXBOOT]: Key derivation failed!\n");
+    if (target_firmware < ATMOSPHERE_TARGET_FIRMWARE_700) {
+        if (derive_nx_keydata(target_firmware, g_keyblobs, available_revision, tsec_key, tsec_root_keys, &keygen_type) != 0) {
+            fatal_error("[NXBOOT]: Key derivation failed!\n");
+        }
     }
 
     /* Setup boot configuration for Exosphère. */
     nxboot_configure_exosphere(target_firmware, keygen_type);
 
     /* Initialize Boot Reason on older firmware versions. */
-    if (MAILBOX_EXOSPHERE_CONFIGURATION->target_firmware < ATMOSPHERE_TARGET_FIRMWARE_400) {
+    if (target_firmware < ATMOSPHERE_TARGET_FIRMWARE_400) {
         print(SCREEN_LOG_LEVEL_INFO, "[NXBOOT]: Initializing Boot Reason...\n");
-        nxboot_set_bootreason();
+        nxboot_set_bootreason((void *)MAILBOX_NX_BOOTLOADER_BOOT_REASON_BASE(target_firmware));
     }
 
     /* Read the warmboot firmware from a file, otherwise from Atmosphere's implementation. */
@@ -495,8 +524,10 @@ uint32_t nxboot_main(void) {
         warmboot_memaddr = (void *)0x8000D000;
     } else if (MAILBOX_EXOSPHERE_CONFIGURATION->target_firmware < ATMOSPHERE_TARGET_FIRMWARE_600) {
         warmboot_memaddr = (void *)0x4003B000;
-    } else {
+    } else if (MAILBOX_EXOSPHERE_CONFIGURATION->target_firmware < ATMOSPHERE_TARGET_FIRMWARE_700) {
         warmboot_memaddr = (void *)0x4003D800;
+    } else {
+        warmboot_memaddr = (void *)0x4003E000;
     }
 
     print(SCREEN_LOG_LEVEL_INFO, "[NXBOOT]: Copying warmboot firmware...\n");
@@ -508,10 +539,12 @@ uint32_t nxboot_main(void) {
             pmc->scratch1 = (uint32_t)warmboot_memaddr;
     }
 
-    print(SCREEN_LOG_LEVEL_MANDATORY, "[NXBOOT]: Rebuilding package2...\n");
+    print(SCREEN_LOG_LEVEL_INFO, "[NXBOOT]: Rebuilding package2...\n");
     
     /* Parse stratosphere config. */
     nxboot_configure_stratosphere(MAILBOX_EXOSPHERE_CONFIGURATION->target_firmware);
+
+    print(SCREEN_LOG_LEVEL_INFO, u8"[NXBOOT]: Configured Stratosphere...\n");
 
     /* Patch package2, adding Thermosphère + custom KIPs. */
     package2_rebuild_and_copy(package2, MAILBOX_EXOSPHERE_CONFIGURATION->target_firmware);
@@ -566,9 +599,6 @@ uint32_t nxboot_main(void) {
     free(package2);
 
     print(SCREEN_LOG_LEVEL_INFO, "[NXBOOT]: Powering on the CCPLEX...\n");
-    
-    /* Display splash screen. */
-    display_splash_screen_bmp(loader_ctx->custom_splash_path, (void *)0xC0000000);
     
     /* Unmount everything. */
     nxfs_unmount_all();

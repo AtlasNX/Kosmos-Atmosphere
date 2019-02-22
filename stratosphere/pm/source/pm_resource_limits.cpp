@@ -122,6 +122,9 @@ void ResourceLimitUtils::InitializeLimits() {
         memcpy(&g_resource_limits, &g_resource_limits_deprecated, sizeof(g_resource_limits));
     }
     
+    /* 7.0.0+: Nintendo restricts the number of system threads here, from 0x260 -> 0x60. */
+    /* We will not do this. */
+    
     if (kernelAbove600()) {
         /* NOTE: 5 is a fake type, official code does not do this. */
         /* This is done for ease of backwards compatibility. */
@@ -182,8 +185,8 @@ void ResourceLimitUtils::InitializeLimits() {
     /* Atmosphere: Allocate extra memory (24 MiB) to SYSTEM away from Applet. */
     for (unsigned int i = 0; i < 6; i++) {
         g_memory_resource_limits[i][0] += ATMOSPHERE_EXTRA_SYSTEM_MEMORY_FOR_SYSMODULES;
-        /* On < 4.0.0, taking from application instead of applet fixes a rare hang on boot. */
-        if (kernelAbove400()) {
+        /* On < 3.0.0, taking from application instead of applet fixes a rare hang on boot. */
+        if (kernelAbove300()) {
             g_memory_resource_limits[i][2] -= ATMOSPHERE_EXTRA_SYSTEM_MEMORY_FOR_SYSMODULES;
         } else {
             g_memory_resource_limits[i][1] -= ATMOSPHERE_EXTRA_SYSTEM_MEMORY_FOR_SYSMODULES;

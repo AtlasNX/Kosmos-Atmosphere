@@ -6,7 +6,9 @@ ifneq (, $(strip $(shell git status --porcelain 2>/dev/null)))
     AMSREV := $(AMSREV)-dirty
 endif
 
-all: fusee stratosphere exosphere thermosphere troposphere
+COMPONENTS := fusee stratosphere exosphere thermosphere troposphere
+
+all: $(COMPONENTS)
 
 thermosphere:
 	$(MAKE) -C thermosphere all
@@ -20,13 +22,16 @@ stratosphere: exosphere
 troposphere: stratosphere
 	$(MAKE) -C troposphere all
 
-fusee: exosphere stratosphere
+sept: exosphere
+	$(MAKE) -C sept all
+
+fusee: exosphere stratosphere sept
 	$(MAKE) -C $@ all
 
 clean:
 	$(MAKE) -C fusee clean
 	rm -rf out
-    
+
 dist: all
 	$(eval MAJORVER = $(shell grep '\ATMOSPHERE_RELEASE_VERSION_MAJOR\b' common/include/atmosphere/version.h \
 		| tr -s [:blank:] \
@@ -42,19 +47,24 @@ dist: all
 	rm -rf out
 	mkdir atmosphere-$(AMSVER)
 	mkdir atmosphere-$(AMSVER)/atmosphere
+	mkdir atmosphere-$(AMSVER)/sept
 	mkdir atmosphere-$(AMSVER)/switch
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/titles/0100000000000036
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/titles/0100000000000034
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032
 	cp fusee/fusee-primary/fusee-primary.bin atmosphere-$(AMSVER)/atmosphere/reboot_payload.bin
 	cp fusee/fusee-secondary/fusee-secondary.bin atmosphere-$(AMSVER)/atmosphere/fusee-secondary.bin
+	cp fusee/fusee-secondary/fusee-secondary.bin atmosphere-$(AMSVER)/sept/payload.bin
+	cp sept/sept-primary/sept-primary.bin atmosphere-$(AMSVER)/sept/sept-primary.bin
+	cp sept/sept-secondary/sept-secondary.bin atmosphere-$(AMSVER)/sept/sept-secondary.bin
+	cp sept/sept-secondary/sept-secondary.enc atmosphere-$(AMSVER)/sept/sept-secondary.enc
 	cp common/defaults/BCT.ini atmosphere-$(AMSVER)/atmosphere/BCT.ini
 	cp common/defaults/loader.ini atmosphere-$(AMSVER)/atmosphere/loader.ini
 	cp common/defaults/system_settings.ini atmosphere-$(AMSVER)/atmosphere/system_settings.ini
 	cp -r common/defaults/kip_patches atmosphere-$(AMSVER)/atmosphere/kip_patches
 	cp stratosphere/creport/creport.nsp atmosphere-$(AMSVER)/atmosphere/titles/0100000000000036/exefs.nsp
 	cp stratosphere/fatal/fatal.nsp atmosphere-$(AMSVER)/atmosphere/titles/0100000000000034/exefs.nsp
-	cp stratosphere/set_mitm/set_mitm.nsp atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032/exefs.nsp
+	cp stratosphere/eclct.stub/eclct.stub.nsp atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032/exefs.nsp
 	cp troposphere/reboot_to_payload/reboot_to_payload.nro atmosphere-$(AMSVER)/switch/reboot_to_payload.nro
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032/flags
 	touch atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032/flags/boot2.flag
@@ -63,6 +73,6 @@ dist: all
 	mkdir out
 	mv atmosphere-$(AMSVER).zip out/atmosphere-$(AMSVER).zip
 	cp fusee/fusee-primary/fusee-primary.bin out/fusee-primary.bin
-   
 
-.PHONY: $(TOPTARGETS) fusee
+
+.PHONY: $(TOPTARGETS) $(COMPONENTS)
