@@ -27,19 +27,7 @@
 #include "pm_registration.hpp"
 #include "pm_boot_mode.hpp"
 
-static std::vector<Boot2KnownTitleId> g_boot2_titles;
-
-static void ClearLaunchedTitles() {
-    g_boot2_titles.clear();
-}
-
-static void SetLaunchedTitle(Boot2KnownTitleId title_id) {
-    g_boot2_titles.push_back(title_id);
-}
-
-static bool HasLaunchedTitle(Boot2KnownTitleId title_id) {
-    return std::find(g_boot2_titles.begin(), g_boot2_titles.end(), title_id) != g_boot2_titles.end();
-}
+static std::vector<u64> g_launched_titles;
 
 static bool IsHexadecimal(const char *str) {
     while (*str) {
@@ -52,27 +40,39 @@ static bool IsHexadecimal(const char *str) {
     return true;
 }
 
-static void LaunchTitle(Boot2KnownTitleId title_id, FsStorageId storage_id, u32 launch_flags, u64 *pid) {
-    u64 local_pid;
+static bool HasLaunchedTitle(u64 title_id) {
+    return std::find(g_launched_titles.begin(), g_launched_titles.end(), title_id) != g_launched_titles.end();
+}
+
+static void SetLaunchedTitle(u64 title_id) {
+    g_launched_titles.push_back(title_id);
+}
+
+static void ClearLaunchedTitles() {
+    g_launched_titles.clear();
+}
+
+static void LaunchTitle(u64 title_id, FsStorageId storage_id, u32 launch_flags, u64 *pid) {
+    u64 local_pid = 0;
     
     /* Don't launch a title twice during boot2. */
     if (HasLaunchedTitle(title_id)) {
         return;
     }
     
-    Result rc = Registration::LaunchProcessByTidSid(Registration::TidSid{(u64)title_id, storage_id}, launch_flags, &local_pid);
+    Result rc = Registration::LaunchProcessByTidSid(Registration::TidSid{title_id, storage_id}, launch_flags, &local_pid);
     switch (rc) {
-        case 0xCE01:
+        case ResultKernelResourceExhausted:
             /* Out of resource! */
-            /* TODO: Panic(). */
+            std::abort();
             break;
-        case 0xDE01:
+        case ResultKernelOutOfMemory:
             /* Out of memory! */
-            /* TODO: Panic(). */
+            std::abort();
             break;
-        case 0xD001:
+        case ResultKernelLimitReached:
             /* Limit Reached! */
-            /* TODO: Panic(). */
+            std::abort();
             break;
         default:
             /* We don't care about other issues. */
@@ -125,46 +125,46 @@ static bool IsMaintenanceMode() {
     return false;
 }
 
-static const std::tuple<Boot2KnownTitleId, bool> g_additional_launch_programs[] = {
-    {Boot2KnownTitleId::am, true},          /* am */
-    {Boot2KnownTitleId::nvservices, true},  /* nvservices */
-    {Boot2KnownTitleId::nvnflinger, true},  /* nvnflinger */
-    {Boot2KnownTitleId::vi, true},          /* vi */
-    {Boot2KnownTitleId::ns, true},          /* ns */
-    {Boot2KnownTitleId::lm, true},          /* lm */
-    {Boot2KnownTitleId::ppc, true},         /* ppc */
-    {Boot2KnownTitleId::ptm, true},         /* ptm */
-    {Boot2KnownTitleId::hid, true},         /* hid */
-    {Boot2KnownTitleId::audio, true},       /* audio */
-    {Boot2KnownTitleId::lbl, true},         /* lbl */
-    {Boot2KnownTitleId::wlan, true},        /* wlan */
-    {Boot2KnownTitleId::bluetooth, true},   /* bluetooth */
-    {Boot2KnownTitleId::bsdsockets, true},  /* bsdsockets */
-    {Boot2KnownTitleId::nifm, true},        /* nifm */
-    {Boot2KnownTitleId::ldn, true},         /* ldn */
-    {Boot2KnownTitleId::account, true},     /* account */
-    {Boot2KnownTitleId::friends, false},    /* friends */
-    {Boot2KnownTitleId::nfc, true},         /* nfc */
-    {Boot2KnownTitleId::jpegdec, true},     /* jpegdec */
-    {Boot2KnownTitleId::capsrv, true},      /* capsrv */
-    {Boot2KnownTitleId::ssl, true},         /* ssl */
-    {Boot2KnownTitleId::nim, true},         /* nim */
-    {Boot2KnownTitleId::bcat, false},       /* bcat */
-    {Boot2KnownTitleId::erpt, true},        /* erpt */
-    {Boot2KnownTitleId::es, true},          /* es */
-    {Boot2KnownTitleId::pctl, true},        /* pctl */
-    {Boot2KnownTitleId::btm, true},         /* btm */
-    {Boot2KnownTitleId::eupld, false},      /* eupld */
-    {Boot2KnownTitleId::glue, true},        /* glue */
- /* {Boot2KnownTitleId::eclct, true}, */    /* eclct */      /* Skip launching error collection in Atmosphere to lessen telemetry. */
-    {Boot2KnownTitleId::npns, false},       /* npns */
-    {Boot2KnownTitleId::fatal, true},       /* fatal */
-    {Boot2KnownTitleId::ro, true},          /* ro */
-    {Boot2KnownTitleId::profiler, true},    /* profiler */
-    {Boot2KnownTitleId::sdb, true},         /* sdb */
-    {Boot2KnownTitleId::migration, true},   /* migration */
-    {Boot2KnownTitleId::grc, true},         /* grc */
-    {Boot2KnownTitleId::olsc, true},        /* olsc */
+static const std::tuple<u64, bool> g_additional_launch_programs[] = {
+    {TitleId_Am, true},          /* am */
+    {TitleId_NvServices, true},  /* nvservices */
+    {TitleId_NvnFlinger, true},  /* nvnflinger */
+    {TitleId_Vi, true},          /* vi */
+    {TitleId_Ns, true},          /* ns */
+    {TitleId_LogManager, true},  /* lm */
+    {TitleId_Ppc, true},         /* ppc */
+    {TitleId_Ptm, true},         /* ptm */
+    {TitleId_Hid, true},         /* hid */
+    {TitleId_Audio, true},       /* audio */
+    {TitleId_Lbl, true},         /* lbl */
+    {TitleId_Wlan, true},        /* wlan */
+    {TitleId_Bluetooth, true},   /* bluetooth */
+    {TitleId_BsdSockets, true},  /* bsdsockets */
+    {TitleId_Nifm, true},        /* nifm */
+    {TitleId_Ldn, true},         /* ldn */
+    {TitleId_Account, true},     /* account */
+    {TitleId_Friends, false},    /* friends */
+    {TitleId_Nfc, true},         /* nfc */
+    {TitleId_JpegDec, true},     /* jpegdec */
+    {TitleId_CapSrv, true},      /* capsrv */
+    {TitleId_Ssl, true},         /* ssl */
+    {TitleId_Nim, true},         /* nim */
+    {TitleId_Bcat, false},       /* bcat */
+    {TitleId_Erpt, true},        /* erpt */
+    {TitleId_Es, true},          /* es */
+    {TitleId_Pctl, true},        /* pctl */
+    {TitleId_Btm, true},         /* btm */
+    {TitleId_Eupld, false},      /* eupld */
+    {TitleId_Glue, true},        /* glue */
+ /* {TitleId_Eclct, true}, */    /* eclct */      /* Skip launching error collection in Atmosphere to lessen telemetry. */
+    {TitleId_Npns, false},       /* npns */
+    {TitleId_Fatal, true},       /* fatal */
+    {TitleId_Ro, true},          /* ro */
+    {TitleId_Profiler, true},    /* profiler */
+    {TitleId_Sdb, true},         /* sdb */
+    {TitleId_Migration, true},   /* migration */
+    {TitleId_Grc, true},         /* grc */
+    {TitleId_Olsc, true},        /* olsc */
 };
 
 static void MountSdCard() {
@@ -206,15 +206,15 @@ void EmbeddedBoot2::Main() {
     /* psc, bus, pcv is the minimal set of required titles to get SD card. */ 
     /* bus depends on pcie, and pcv depends on settings. */
     /* Launch psc. */
-    LaunchTitle(Boot2KnownTitleId::psc, FsStorageId_NandSystem, 0, NULL);
+    LaunchTitle(TitleId_Psc, FsStorageId_NandSystem, 0, NULL);
     /* Launch pcie. */
-    LaunchTitle(Boot2KnownTitleId::pcie, FsStorageId_NandSystem, 0, NULL);
+    LaunchTitle(TitleId_Pcie, FsStorageId_NandSystem, 0, NULL);
     /* Launch bus. */
-    LaunchTitle(Boot2KnownTitleId::bus, FsStorageId_NandSystem, 0, NULL);
+    LaunchTitle(TitleId_Bus, FsStorageId_NandSystem, 0, NULL);
     /* Launch settings. */
-    LaunchTitle(Boot2KnownTitleId::settings, FsStorageId_NandSystem, 0, NULL);
+    LaunchTitle(TitleId_Settings, FsStorageId_NandSystem, 0, NULL);
     /* Launch pcv. */
-    LaunchTitle(Boot2KnownTitleId::pcv, FsStorageId_NandSystem, 0, NULL);
+    LaunchTitle(TitleId_Pcv, FsStorageId_NandSystem, 0, NULL);
     
     /* At this point, the SD card can be mounted. */
     MountSdCard();
@@ -234,14 +234,18 @@ void EmbeddedBoot2::Main() {
     }
     
     /* Launch usb. */
-    LaunchTitle(Boot2KnownTitleId::usb, FsStorageId_NandSystem, 0, NULL);
+    LaunchTitle(TitleId_Usb, FsStorageId_NandSystem, 0, NULL);
+    
     /* Launch tma. */
-    LaunchTitle(Boot2KnownTitleId::tma, FsStorageId_NandSystem, 0, NULL);
+    LaunchTitle(TitleId_Tma, FsStorageId_NandSystem, 0, NULL);
+      
+    /* Launch Atmosphere dmnt, using FsStorageId_None to force SD card boot. */
+    LaunchTitle(TitleId_Dmnt, FsStorageId_None, 0, NULL);
     
     /* Launch default programs. */
     for (auto &launch_program : g_additional_launch_programs) {
         if (!maintenance || std::get<bool>(launch_program)) {
-            LaunchTitle(std::get<Boot2KnownTitleId>(launch_program), FsStorageId_NandSystem, 0, NULL);
+            LaunchTitle(std::get<u64>(launch_program), FsStorageId_NandSystem, 0, NULL);
         }
     }
     
@@ -251,7 +255,10 @@ void EmbeddedBoot2::Main() {
     if (titles_dir != NULL) {
         while ((ent = readdir(titles_dir)) != NULL) {
             if (strlen(ent->d_name) == 0x10 && IsHexadecimal(ent->d_name)) {
-                u64 title_id = strtoul(ent->d_name, NULL, 16);
+                u64 title_id = (u64)strtoul(ent->d_name, NULL, 16);
+                if (HasLaunchedTitle(title_id)) {
+                    continue;
+                }
                 char title_path[FS_MAX_PATH] = {0};
                 strcpy(title_path, "sdmc:/atmosphere/titles/");
                 strcat(title_path, ent->d_name);
@@ -259,7 +266,7 @@ void EmbeddedBoot2::Main() {
                 FILE *f_flag = fopen(title_path, "rb");
                 if (f_flag != NULL) {
                     fclose(f_flag);
-                    LaunchTitle((Boot2KnownTitleId)title_id, FsStorageId_None, 0, NULL);
+                    LaunchTitle(title_id, FsStorageId_None, 0, NULL);
                 } else {
                     /* TODO: Deprecate this in the future. */
                     memset(title_path, 0, FS_MAX_PATH);
@@ -269,7 +276,7 @@ void EmbeddedBoot2::Main() {
                     f_flag = fopen(title_path, "rb");
                     if (f_flag != NULL) {
                         fclose(f_flag);
-                        LaunchTitle((Boot2KnownTitleId)title_id, FsStorageId_None, 0, NULL);
+                        LaunchTitle(title_id, FsStorageId_None, 0, NULL);
                     }
                 }
             }
@@ -280,6 +287,6 @@ void EmbeddedBoot2::Main() {
     /* We no longer need the SD card. */
     fsdevUnmountAll();
     
-    /* Clear titles. */
+    /* Free the memory used to track what boot2 launches. */
     ClearLaunchedTitles();
 }

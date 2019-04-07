@@ -27,7 +27,7 @@
 
 Result ProcessCreation::InitializeProcessInfo(NpdmUtils::NpdmInfo *npdm, Handle reslimit_h, u64 arg_flags, ProcessInfo *out_proc_info) {
     /* Initialize a ProcessInfo using an npdm. */
-    *out_proc_info = (const ProcessCreation::ProcessInfo){0};
+    *out_proc_info = {};
     
     /* Copy all but last char of name, insert NULL terminator. */
     std::copy(npdm->header->title_name, npdm->header->title_name + sizeof(out_proc_info->name) - 1, out_proc_info->name);
@@ -45,7 +45,7 @@ Result ProcessCreation::InitializeProcessInfo(NpdmUtils::NpdmInfo *npdm, Handle 
     /* Set IsAddressSpace64Bit, AddressSpaceType. */
     if (npdm->header->mmu_flags & 8) {
         /* Invalid Address Space Type. */
-        return 0x809;
+        return ResultLoaderInvalidMeta;
     }
     out_proc_info->process_flags = (npdm->header->mmu_flags & 0xF);
     
@@ -66,17 +66,17 @@ Result ProcessCreation::InitializeProcessInfo(NpdmUtils::NpdmInfo *npdm, Handle 
     /* 3.0.0+ System Resource Size. */
     if (kernelAbove300()) {
         if (npdm->header->system_resource_size & 0x1FFFFF) {
-            return 0xA409;
+            return ResultLoaderInvalidSize;
         }
         if (npdm->header->system_resource_size) {
             if ((out_proc_info->process_flags & 6) == 0) {
-                return 0x809;
+                return ResultLoaderInvalidMeta;
             }
             if (!(((application_type & 3) == 1) || (kernelAbove600() && (application_type & 3) == 2))) {
-                return 0x809;
+                return ResultLoaderInvalidMeta;
             }
             if (npdm->header->system_resource_size > 0x1FE00000) {
-                return 0x809;
+                return ResultLoaderInvalidMeta;
             }
         }
         out_proc_info->system_resource_num_pages = npdm->header->system_resource_size >> 12;
@@ -103,17 +103,17 @@ Result ProcessCreation::InitializeProcessInfo(NpdmUtils::NpdmInfo *npdm, Handle 
                 out_proc_info->process_flags |= 0x180;
                 break;
             default:
-                return 0x809;
+                return ResultLoaderInvalidMeta;
         }
     }
     
-    return 0x0;
+    return ResultSuccess;
 }
 
 Result ProcessCreation::CreateProcess(Handle *out_process_h, u64 index, char *nca_path, LaunchQueue::LaunchItem *launch_item, u64 arg_flags, Handle reslimit_h) {
-    NpdmUtils::NpdmInfo npdm_info = {0};
-    ProcessInfo process_info = {0};
-    NsoUtils::NsoLoadExtents nso_extents = {0};
+    NpdmUtils::NpdmInfo npdm_info = {};
+    ProcessInfo process_info = {};
+    NsoUtils::NsoLoadExtents nso_extents = {};
     Registration::Process *target_process;
     Handle process_h = 0;
     u64 process_id = 0;
@@ -123,7 +123,7 @@ Result ProcessCreation::CreateProcess(Handle *out_process_h, u64 index, char *nc
     /* Get the process from the registration queue. */
     target_process = Registration::GetProcess(index);
     if (target_process == NULL) {
-        return 0x1009;
+        return ResultLoaderProcessNotRegistered;
     }
     
     /* Mount the title's exefs. */
@@ -147,7 +147,7 @@ Result ProcessCreation::CreateProcess(Handle *out_process_h, u64 index, char *nc
     
     /* Validate the title we're loading is what we expect. */
     if (npdm_info.aci0->title_id < npdm_info.acid->title_id_range_min || npdm_info.aci0->title_id > npdm_info.acid->title_id_range_max) {
-        rc = 0x1209;
+        rc = ResultLoaderInvalidProgramId;
         goto CREATE_PROCESS_END;
     }
     
@@ -221,10 +221,18 @@ Result ProcessCreation::CreateProcess(Handle *out_process_h, u64 index, char *nc
     /* Send the pid/tid pair to anyone interested in man-in-the-middle-attacking it. */
     Registration::AssociatePidTidForMitM(index);
     
-    rc = 0;  
+    rc = ResultSuccess;
+
+    /* If HBL, override HTML document path. */
+    if (ContentManagement::ShouldOverrideContentsWithHBL(target_process->tid_sid.title_id)) {
+        ContentManagement::RedirectHtmlDocumentPathForHbl(target_process->tid_sid.title_id, target_process->tid_sid.storage_id);
+    }
 
     /* ECS is a one-shot operation, but we don't clear on failure. */
     ContentManagement::ClearExternalContentSource(target_process->tid_sid.title_id);
+
+
+CREATE_PROCESS_END:
     if (mounted_code) {
         if (R_SUCCEEDED(rc) && target_process->tid_sid.storage_id != FsStorageId_None) {
             rc = ContentManagement::UnmountCode();
@@ -232,8 +240,7 @@ Result ProcessCreation::CreateProcess(Handle *out_process_h, u64 index, char *nc
             ContentManagement::UnmountCode();
         }
     }
-
-CREATE_PROCESS_END:
+    
     if (R_SUCCEEDED(rc)) {
         *out_process_h = process_h;
     } else {

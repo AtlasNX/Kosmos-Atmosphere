@@ -1,6 +1,7 @@
 TOPTARGETS := all clean dist
 AMSBRANCH := $(shell git symbolic-ref --short HEAD)
-AMSREV := $(AMSBRANCH)-$(shell git rev-parse --short HEAD)
+AMSHASH := $(shell git rev-parse --short HEAD)
+AMSREV := $(AMSBRANCH)-$(AMSHASH)
 
 ifneq (, $(strip $(shell git status --porcelain 2>/dev/null)))
     AMSREV := $(AMSREV)-dirty
@@ -53,6 +54,7 @@ dist: all
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/titles/0100000000000034
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032
 	cp fusee/fusee-primary/fusee-primary.bin atmosphere-$(AMSVER)/atmosphere/reboot_payload.bin
+	mkdir -p atmosphere-$(AMSVER)/atmosphere/titles/010000000000000D
 	cp fusee/fusee-secondary/fusee-secondary.bin atmosphere-$(AMSVER)/atmosphere/fusee-secondary.bin
 	cp fusee/fusee-secondary/fusee-secondary.bin atmosphere-$(AMSVER)/sept/payload.bin
 	cp sept/sept-primary/sept-primary.bin atmosphere-$(AMSVER)/sept/sept-primary.bin
@@ -62,12 +64,14 @@ dist: all
 	cp common/defaults/loader.ini atmosphere-$(AMSVER)/atmosphere/loader.ini
 	cp common/defaults/system_settings.ini atmosphere-$(AMSVER)/atmosphere/system_settings.ini
 	cp -r common/defaults/kip_patches atmosphere-$(AMSVER)/atmosphere/kip_patches
+	cp -r common/defaults/hbl_html atmosphere-$(AMSVER)/atmosphere/hbl_html
 	cp stratosphere/creport/creport.nsp atmosphere-$(AMSVER)/atmosphere/titles/0100000000000036/exefs.nsp
 	cp stratosphere/fatal/fatal.nsp atmosphere-$(AMSVER)/atmosphere/titles/0100000000000034/exefs.nsp
 	cp stratosphere/eclct.stub/eclct.stub.nsp atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032/exefs.nsp
 	cp troposphere/reboot_to_payload/reboot_to_payload.nro atmosphere-$(AMSVER)/switch/reboot_to_payload.nro
 	mkdir -p atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032/flags
 	touch atmosphere-$(AMSVER)/atmosphere/titles/0100000000000032/flags/boot2.flag
+	cp stratosphere/dmnt/dmnt.nsp atmosphere-$(AMSVER)/atmosphere/titles/010000000000000D/exefs.nsp
 	cd atmosphere-$(AMSVER); zip -r ../atmosphere-$(AMSVER).zip ./*; cd ../;
 	rm -r atmosphere-$(AMSVER)
 	mkdir out

@@ -48,13 +48,13 @@ LayeredRomFS::LayeredRomFS(std::shared_ptr<RomInterfaceStorage> s_r, std::shared
 Result LayeredRomFS::Read(void *buffer, size_t size, u64 offset)  {
     /* Size zero reads should always succeed. */
     if (size == 0) {
-        return 0;
+        return ResultSuccess;
     }
     
     /* Validate size. */
     u64 virt_size = (*this->p_source_infos)[this->p_source_infos->size() - 1].virtual_offset + (*this->p_source_infos)[this->p_source_infos->size() - 1].size;
     if (offset >= virt_size) {
-        return 0x2F5A02;
+        return ResultFsInvalidOffset;
     }
     if (virt_size - offset < size) {
         size = virt_size - offset;
@@ -142,7 +142,9 @@ Result LayeredRomFS::Read(void *buffer, size_t size, u64 offset)  {
                     }
                     break;
                 default:
-                    fatalSimple(0xF601);
+                    /* TODO: Better error. */
+                    fatalSimple(ResultKernelConnectionClosed);
+                    break;
             }
             read_so_far += cur_read_size;
             offset += cur_read_size;
@@ -156,16 +158,16 @@ Result LayeredRomFS::Read(void *buffer, size_t size, u64 offset)  {
         }
     }
     
-    return 0;
+    return ResultSuccess;
 }
 Result LayeredRomFS::GetSize(u64 *out_size)  {
     *out_size = (*this->p_source_infos)[this->p_source_infos->size() - 1].virtual_offset + (*this->p_source_infos)[this->p_source_infos->size() - 1].size;
-    return 0x0;
+    return ResultSuccess;
 }
 Result LayeredRomFS::OperateRange(u32 operation_type, u64 offset, u64 size, FsRangeInfo *out_range_info) {
     /* TODO: How should I implement this for a virtual romfs? */
     if (operation_type == 3) {
         *out_range_info = {0};
     }
-    return 0;
+    return ResultSuccess;
 }

@@ -47,8 +47,8 @@ Result ShowFatalTask::SetupDisplayInternal() {
     ViDisplay display;
     /* Try to open the display. */
     if (R_FAILED((rc = viOpenDisplay("Internal", &display)))) {
-        if (rc == 0xE72) {
-            return 0;
+        if (rc == ResultViNotFound) {
+            return ResultSuccess;
         } else {
             return rc;
         }
@@ -74,8 +74,8 @@ Result ShowFatalTask::SetupDisplayExternal() {
     ViDisplay display;
     /* Try to open the display. */
     if (R_FAILED((rc = viOpenDisplay("External", &display)))) {
-        if (rc == 0xE72) {
-            return 0;
+        if (rc == ResultViNotFound) {
+            return ResultSuccess;
         } else {
             return rc;
         }
@@ -92,7 +92,7 @@ Result ShowFatalTask::SetupDisplayExternal() {
 }
 
 Result ShowFatalTask::PrepareScreenForDrawing() {
-    Result rc = 0;
+    Result rc = ResultSuccess;
     
     /* Connect to vi. */
     if (R_FAILED((rc = viInitialize(ViServiceType_Manager)))) {
@@ -117,8 +117,12 @@ Result ShowFatalTask::PrepareScreenForDrawing() {
     if (R_FAILED((rc = viGetDisplayLogicalResolution(&this->display, &display_width, &display_height)))) {
         return rc;
     }
-    if (R_FAILED((rc = viSetDisplayMagnification(&this->display, 0, 0, display_width, display_height)))) {
-        return rc;
+    
+    /* viSetDisplayMagnification was added in 3.0.0. */
+    if (GetRuntimeFirmwareVersion() >= FirmwareVersion_300) {
+        if (R_FAILED((rc = viSetDisplayMagnification(&this->display, 0, 0, display_width, display_height)))) {
+            return rc;
+        }
     }
     
     /* Create layer to draw to. */
@@ -171,7 +175,7 @@ Result ShowFatalTask::PrepareScreenForDrawing() {
 }
 
 Result ShowFatalTask::ShowFatal() {
-    Result rc = 0;
+    Result rc = ResultSuccess;
     const FatalConfig *config = GetFatalConfig();
 
     if (R_FAILED((rc = PrepareScreenForDrawing()))) {
@@ -182,7 +186,7 @@ Result ShowFatalTask::ShowFatal() {
     /* Dequeue a buffer. */
     u16 *tiled_buf = reinterpret_cast<u16 *>(framebufferBegin(&this->fb, NULL));
     if (tiled_buf == nullptr) {
-        return FatalResult_NullGfxBuffer;
+        return ResultFatalNullGraphicsBuffer;
     }
     
     /* Let the font manager know about our framebuffer. */
@@ -210,7 +214,7 @@ Result ShowFatalTask::ShowFatal() {
     FontManager::AddSpacingLines(0.5f);
     FontManager::PrintFormatLine(u8"Firmware: %s (Atmosphère %u.%u.%u-%s)", GetFatalConfig()->firmware_version.display_version, CURRENT_ATMOSPHERE_VERSION, GetAtmosphereGitRevision());
     FontManager::AddSpacingLines(1.5f);
-    if (this->ctx->error_code != 0xCAFEF) {
+    if (this->ctx->error_code != ResultAtmosphereVersionMismatch) {
         FontManager::Print(config->error_desc);
     } else {
         /* Print a special message for atmosphere version mismatch. */
@@ -416,5 +420,5 @@ void BacklightControlTask::TurnOnBacklight() {
 
 Result BacklightControlTask::Run() {
     TurnOnBacklight();
-    return 0;
+    return ResultSuccess;
 }

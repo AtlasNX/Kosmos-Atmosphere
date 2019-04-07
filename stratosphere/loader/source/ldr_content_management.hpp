@@ -19,6 +19,11 @@
 
 #include "ldr_registration.hpp"
 
+struct OverrideKey {
+    u64 key_combination;
+    bool override_by_default;
+};
+
 class ContentManagement {
     public:
         static Result MountCode(u64 tid, FsStorageId sid);
@@ -31,14 +36,17 @@ class ContentManagement {
         static Result RedirectContentPath(const char *path, u64 tid, FsStorageId sid);
         static Result ResolveContentPathForTidSid(char *out_path, Registration::TidSid *tid_sid);
         static Result RedirectContentPathForTidSid(const char *path, Registration::TidSid *tid_sid);
-        
+
+        static void   RedirectHtmlDocumentPathForHbl(u64 tid, FsStorageId sid);
+
         static bool HasCreatedTitle(u64 tid);
         static void SetCreatedTitle(u64 tid);
         static void RefreshConfigurationData();
         static void TryMountSdCard();
-        
-        static bool ShouldReplaceWithHBL(u64 tid);
-        static bool ShouldOverrideContents(u64 tid);
+
+        static OverrideKey GetTitleOverrideKey(u64 tid);
+        static bool ShouldOverrideContentsWithSD(u64 tid);
+        static bool ShouldOverrideContentsWithHBL(u64 tid);
 
         /* SetExternalContentSource extension */
         class ExternalContentSource {

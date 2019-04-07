@@ -89,13 +89,13 @@ static void DoRebootToPayload() {
 Result BpcRebootManager::PerformReboot() {
     switch (g_reboot_type) {
         case BpcRebootType::Standard:
-            return RESULT_FORWARD_TO_SESSION;
+            return ResultAtmosphereMitmShouldForwardToSession;
         case BpcRebootType::ToRcm:
             RebootToRcm();
-            return 0;
+            return ResultSuccess;
         case BpcRebootType::ToPayload:
         default:
             DoRebootToPayload();
-            return 0;
+            return ResultSuccess;
     }
 }

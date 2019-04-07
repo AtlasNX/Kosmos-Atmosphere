@@ -23,7 +23,6 @@
 #include "debug.hpp"
 #include "utils.hpp"
 #include "ini.h"
-#include "sha256.h"
 
 #include "set_mitm/setsys_settings_items.hpp"
 
@@ -35,10 +34,26 @@ static std::vector<u64> g_disable_mitm_flagged_tids;
 static std::atomic_bool g_has_initialized = false;
 static std::atomic_bool g_has_hid_session = false;
 
-static u64 g_override_key_combination = KEY_R;
-static u64 g_override_hbl_tid = 0x010000000000100DULL;
-static bool g_override_any_app = false;
-static bool g_override_by_default = true;
+/* Content override support variables/types */
+static OverrideKey g_default_override_key = {
+    .key_combination = KEY_R,
+    .override_by_default = true
+};
+
+struct HblOverrideConfig {
+    OverrideKey override_key;
+    u64 title_id;
+    bool override_any_app;
+};
+
+static HblOverrideConfig g_hbl_override_config = {
+    .override_key = {
+        .key_combination = KEY_L,
+        .override_by_default = true
+    },
+    .title_id = TitleId_AppletPhotoViewer,
+    .override_any_app = false
+};
 
 /* Static buffer for loader.ini contents at runtime. */
 static char g_config_ini_data[0x800];
@@ -108,12 +123,8 @@ void Utils::InitializeThreadFunc(void *args) {
                 u32 cal0_size = ((u32 *)g_cal0_backup)[2];
                 is_cal0_valid &= cal0_size + 0x40 <= ProdinfoSize;
                 if (is_cal0_valid) {
-                    struct sha256_state sha_ctx;
                     u8 calc_hash[0x20];
-                    sha256_init(&sha_ctx);
-                    sha256_update(&sha_ctx, g_cal0_backup + 0x40, cal0_size);
-                    sha256_finalize(&sha_ctx);
-                    sha256_finish(&sha_ctx, calc_hash);
+                    sha256CalculateHash(calc_hash, g_cal0_backup + 0x40, cal0_size);
                     is_cal0_valid &= memcmp(calc_hash, g_cal0_backup + 0x20, sizeof(calc_hash)) == 0;
                 }
                 has_auto_backup = is_cal0_valid;
@@ -121,7 +132,7 @@ void Utils::InitializeThreadFunc(void *args) {
             
             if (!has_auto_backup) {
                 fsFileSetSize(&g_cal0_file, ProdinfoSize);
-                fsFileWrite(&g_cal0_file, 0, g_cal0_backup, ProdinfoSize);
+                fsFileWrite(&g_cal0_file, 0, g_cal0_storage_backup, ProdinfoSize);
                 fsFileFlush(&g_cal0_file);
             }
             
@@ -204,11 +215,7 @@ void Utils::InitializeThreadFunc(void *args) {
         }
         
         g_has_hid_session = true;
-        
-        hidExit();
     }
-    
-    svcExitThread();
 }
 
 bool Utils::IsSdInitialized() {
@@ -225,7 +232,7 @@ bool Utils::IsHidAvailable() {
 
 Result Utils::OpenSdFile(const char *fn, int flags, FsFile *out) {
     if (!IsSdInitialized()) {
-        return 0xFA202;
+        return ResultFsSdCardNotPresent;
     }
     
     return fsFsOpenFile(&g_sd_filesystem, fn, flags, out);
@@ -233,7 +240,7 @@ Result Utils::OpenSdFile(const char *fn, int flags, FsFile *out) {
 
 Result Utils::OpenSdFileForAtmosphere(u64 title_id, const char *fn, int flags, FsFile *out) {
     if (!IsSdInitialized()) {
-        return 0xFA202;
+        return ResultFsSdCardNotPresent;
     }
     
     char path[FS_MAX_PATH];
@@ -247,7 +254,7 @@ Result Utils::OpenSdFileForAtmosphere(u64 title_id, const char *fn, int flags, F
 
 Result Utils::OpenRomFSSdFile(u64 title_id, const char *fn, int flags, FsFile *out) {
     if (!IsSdInitialized()) {
-        return 0xFA202;
+        return ResultFsSdCardNotPresent;
     }
     
     return OpenRomFSFile(&g_sd_filesystem, title_id, fn, flags, out);
@@ -255,7 +262,7 @@ Result Utils::OpenRomFSSdFile(u64 title_id, const char *fn, int flags, FsFile *o
 
 Result Utils::OpenSdDir(const char *path, FsDir *out) {
     if (!IsSdInitialized()) {
-        return 0xFA202;
+        return ResultFsSdCardNotPresent;
     }
     
     return fsFsOpenDirectory(&g_sd_filesystem, path, FS_DIROPEN_DIRECTORY | FS_DIROPEN_FILE, out);
@@ -263,7 +270,7 @@ Result Utils::OpenSdDir(const char *path, FsDir *out) {
 
 Result Utils::OpenSdDirForAtmosphere(u64 title_id, const char *path, FsDir *out) {
     if (!IsSdInitialized()) {
-        return 0xFA202;
+        return ResultFsSdCardNotPresent;
     }
     
     char safe_path[FS_MAX_PATH];
@@ -277,7 +284,7 @@ Result Utils::OpenSdDirForAtmosphere(u64 title_id, const char *path, FsDir *out)
 
 Result Utils::OpenRomFSSdDir(u64 title_id, const char *path, FsDir *out) {
     if (!IsSdInitialized()) {
-        return 0xFA202;
+        return ResultFsSdCardNotPresent;
     }
     
     return OpenRomFSDir(&g_sd_filesystem, title_id, path, out);
@@ -328,10 +335,10 @@ bool Utils::HasSdRomfsContent(u64 title_id) {
 
 Result Utils::SaveSdFileForAtmosphere(u64 title_id, const char *fn, void *data, size_t size) {
     if (!IsSdInitialized()) {
-        return 0xFA202;
+        return ResultFsSdCardNotPresent;
     }
     
-    Result rc = 0;
+    Result rc = ResultSuccess;
     
     char path[FS_MAX_PATH];
     if (*fn == '/') {
@@ -368,7 +375,11 @@ Result Utils::SaveSdFileForAtmosphere(u64 title_id, const char *fn, void *data, 
 }
 
 bool Utils::IsHblTid(u64 tid) {
-    return (g_override_any_app && IsApplicationTid(tid)) || (!g_override_any_app && tid == g_override_hbl_tid);
+    return (g_hbl_override_config.override_any_app && TitleIdIsApplication(tid)) || (tid == g_hbl_override_config.title_id);
+}
+
+bool Utils::IsWebAppletTid(u64 tid) {
+    return tid == TitleId_AppletWeb || tid == TitleId_AppletOfflineWeb || tid == TitleId_AppletLoginShare || tid == TitleId_AppletWifiWebAuth;
 }
 
 bool Utils::HasTitleFlag(u64 tid, const char *flag) {
@@ -378,14 +389,14 @@ bool Utils::HasTitleFlag(u64 tid, const char *flag) {
         
         memset(flag_path, 0, sizeof(flag_path));
         snprintf(flag_path, sizeof(flag_path) - 1, "flags/%s.flag", flag);
-        if (OpenSdFileForAtmosphere(tid, flag_path, FS_OPEN_READ, &f)) {
+        if (R_SUCCEEDED(OpenSdFileForAtmosphere(tid, flag_path, FS_OPEN_READ, &f))) {
             fsFileClose(&f);
             return true;
         }
         
         /* TODO: Deprecate. */
         snprintf(flag_path, sizeof(flag_path) - 1, "%s.flag", flag);
-        if (OpenSdFileForAtmosphere(tid, flag_path, FS_OPEN_READ, &f)) {
+        if (R_SUCCEEDED(OpenSdFileForAtmosphere(tid, flag_path, FS_OPEN_READ, &f))) {
             fsFileClose(&f);
             return true;
         }
@@ -398,7 +409,7 @@ bool Utils::HasGlobalFlag(const char *flag) {
         FsFile f;
         char flag_path[FS_MAX_PATH] = {0};
         snprintf(flag_path, sizeof(flag_path), "/atmosphere/flags/%s.flag", flag);
-        if (fsFsOpenFile(&g_sd_filesystem, flag_path, FS_OPEN_READ, &f)) {
+        if (R_SUCCEEDED(fsFsOpenFile(&g_sd_filesystem, flag_path, FS_OPEN_READ, &f))) {
             fsFileClose(&f);
             return true;
         }
@@ -434,20 +445,26 @@ bool Utils::HasSdDisableMitMFlag(u64 tid) {
     return false;
 }
 
-Result Utils::GetKeysDown(u64 *keys) {
-    if (!Utils::IsHidAvailable() || R_FAILED(hidInitialize())) {
+Result Utils::GetKeysHeld(u64 *keys) {
+    if (!Utils::IsHidAvailable()) {
         return MAKERESULT(Module_Libnx, LibnxError_InitFail_HID);
     }
     
     hidScanInput();
-    *keys = hidKeysDown(CONTROLLER_P1_AUTO);
+    *keys = hidKeysHeld(CONTROLLER_P1_AUTO);
     
-    hidExit();
-    return 0x0;
+    return ResultSuccess;
 }
 
+static bool HasOverrideKey(OverrideKey *cfg) {
+    u64 kDown = 0;
+    bool keys_triggered = (R_SUCCEEDED(Utils::GetKeysHeld(&kDown)) && ((kDown & cfg->key_combination) != 0));
+    return Utils::IsSdInitialized() && (cfg->override_by_default ^ keys_triggered);
+}
+
+
 bool Utils::HasOverrideButton(u64 tid) {
-    if ((!IsApplicationTid(tid)) || (!IsSdInitialized())) {
+    if ((!TitleIdIsApplication(tid)) || (!IsSdInitialized())) {
         /* Disable button override disable for non-applications. */
         return true;
     }
@@ -455,71 +472,97 @@ bool Utils::HasOverrideButton(u64 tid) {
     /* Unconditionally refresh loader.ini contents. */
     RefreshConfiguration();
     
-    u64 kDown = 0;
-    bool keys_triggered = (R_SUCCEEDED(GetKeysDown(&kDown)) && ((kDown & g_override_key_combination) != 0));
-    return IsSdInitialized() && (g_override_by_default ^ keys_triggered);
+    if (IsHblTid(tid) && HasOverrideKey(&g_hbl_override_config.override_key)) {
+        return true;
+    }
+    
+    OverrideKey title_cfg = GetTitleOverrideKey(tid);
+    return HasOverrideKey(&title_cfg);
 }
 
-static int FsMitMIniHandler(void *user, const char *section, const char *name, const char *value) {
+static OverrideKey ParseOverrideKey(const char *value) {
+    OverrideKey cfg;
+    
+    /* Parse on by default. */
+    if (value[0] == '!') {
+        cfg.override_by_default = true;
+        value++;
+    } else {
+        cfg.override_by_default = false;
+    }
+    
+    /* Parse key combination. */
+    if (strcasecmp(value, "A") == 0) {
+        cfg.key_combination = KEY_A;
+    } else if (strcasecmp(value, "B") == 0) {
+        cfg.key_combination = KEY_B;
+    } else if (strcasecmp(value, "X") == 0) {
+        cfg.key_combination = KEY_X;
+    } else if (strcasecmp(value, "Y") == 0) {
+        cfg.key_combination = KEY_Y;
+    } else if (strcasecmp(value, "LS") == 0) {
+        cfg.key_combination = KEY_LSTICK;
+    } else if (strcasecmp(value, "RS") == 0) {
+        cfg.key_combination = KEY_RSTICK;
+    } else if (strcasecmp(value, "L") == 0) {
+        cfg.key_combination = KEY_L;
+    } else if (strcasecmp(value, "R") == 0) {
+        cfg.key_combination = KEY_R;
+    } else if (strcasecmp(value, "ZL") == 0) {
+        cfg.key_combination = KEY_ZL;
+    } else if (strcasecmp(value, "ZR") == 0) {
+        cfg.key_combination = KEY_ZR;
+    } else if (strcasecmp(value, "PLUS") == 0) {
+        cfg.key_combination = KEY_PLUS;
+    } else if (strcasecmp(value, "MINUS") == 0) {
+        cfg.key_combination = KEY_MINUS;
+    } else if (strcasecmp(value, "DLEFT") == 0) {
+        cfg.key_combination = KEY_DLEFT;
+    } else if (strcasecmp(value, "DUP") == 0) {
+        cfg.key_combination = KEY_DUP;
+    } else if (strcasecmp(value, "DRIGHT") == 0) {
+        cfg.key_combination = KEY_DRIGHT;
+    } else if (strcasecmp(value, "DDOWN") == 0) {
+        cfg.key_combination = KEY_DDOWN;
+    } else if (strcasecmp(value, "SL") == 0) {
+        cfg.key_combination = KEY_SL;
+    } else if (strcasecmp(value, "SR") == 0) {
+        cfg.key_combination = KEY_SR;
+    } else {
+        cfg.key_combination = 0;
+    }
+    
+    return cfg;
+}
+
+static int FsMitmIniHandler(void *user, const char *section, const char *name, const char *value) {
     /* Taken and modified, with love, from Rajkosto's implementation. */
-    if (strcasecmp(section, "config") == 0) {
-        if (strcasecmp(name, "hbl_tid") == 0) {
+    if (strcasecmp(section, "hbl_config") == 0) {
+        if (strcasecmp(name, "title_id") == 0) {
             if (strcasecmp(value, "app") == 0) {
-                g_override_any_app = true;
-            }
-            else {
+                /* DEPRECATED */
+                g_hbl_override_config.override_any_app = true;
+                g_hbl_override_config.title_id = 0;
+            } else {
                 u64 override_tid = strtoul(value, NULL, 16);
                 if (override_tid != 0) {
-                    g_override_hbl_tid = override_tid;
+                    g_hbl_override_config.title_id = override_tid;
                 }
             }
         } else if (strcasecmp(name, "override_key") == 0) {
-            if (value[0] == '!') {
-                g_override_by_default = true;
-                value++;
+            g_hbl_override_config.override_key = ParseOverrideKey(value);
+        } else if (strcasecmp(name, "override_any_app") == 0) {
+            if (strcasecmp(value, "true") == 0 || strcasecmp(value, "1") == 0) {
+                g_hbl_override_config.override_any_app = true;
+            } else if (strcasecmp(value, "false") == 0 || strcasecmp(value, "0") == 0) {
+                g_hbl_override_config.override_any_app = false;
             } else {
-                g_override_by_default = false;
+                /* I guess we default to not changing the value? */
             }
-            
-            if (strcasecmp(value, "A") == 0) {
-                g_override_key_combination = KEY_A;
-            } else if (strcasecmp(value, "B") == 0) {
-                g_override_key_combination = KEY_B;
-            } else if (strcasecmp(value, "X") == 0) {
-                g_override_key_combination = KEY_X;
-            } else if (strcasecmp(value, "Y") == 0) {
-                g_override_key_combination = KEY_Y;
-            } else if (strcasecmp(value, "LS") == 0) {
-                g_override_key_combination = KEY_LSTICK;
-            } else if (strcasecmp(value, "RS") == 0) {
-                g_override_key_combination = KEY_RSTICK;
-            } else if (strcasecmp(value, "L") == 0) {
-                g_override_key_combination = KEY_L;
-            } else if (strcasecmp(value, "R") == 0) {
-                g_override_key_combination = KEY_R;
-            } else if (strcasecmp(value, "ZL") == 0) {
-                g_override_key_combination = KEY_ZL;
-            } else if (strcasecmp(value, "ZR") == 0) {
-                g_override_key_combination = KEY_ZR;
-            } else if (strcasecmp(value, "PLUS") == 0) {
-                g_override_key_combination = KEY_PLUS;
-            } else if (strcasecmp(value, "MINUS") == 0) {
-                g_override_key_combination = KEY_MINUS;
-            } else if (strcasecmp(value, "DLEFT") == 0) {
-                g_override_key_combination = KEY_DLEFT;
-            } else if (strcasecmp(value, "DUP") == 0) {
-                g_override_key_combination = KEY_DUP;
-            } else if (strcasecmp(value, "DRIGHT") == 0) {
-                g_override_key_combination = KEY_DRIGHT;
-            } else if (strcasecmp(value, "DDOWN") == 0) {
-                g_override_key_combination = KEY_DDOWN;
-            } else if (strcasecmp(value, "SL") == 0) {
-                g_override_key_combination = KEY_SL;
-            } else if (strcasecmp(value, "SR") == 0) {
-                g_override_key_combination = KEY_SR;
-            } else {
-                g_override_key_combination = 0;
-            }
+        }
+    } else if (strcasecmp(section, "default_config") == 0) {
+        if (strcasecmp(name, "override_key") == 0) {
+            g_default_override_key = ParseOverrideKey(value);
         }
     } else {
         return 0;
@@ -527,6 +570,46 @@ static int FsMitMIniHandler(void *user, const char *section, const char *name, c
     return 1;
 }
 
+static int FsMitmTitleSpecificIniHandler(void *user, const char *section, const char *name, const char *value) {
+    /* We'll output an override key when relevant. */
+    OverrideKey *user_cfg = reinterpret_cast<OverrideKey *>(user);
+    
+    if (strcasecmp(section, "override_config") == 0) {
+        if (strcasecmp(name, "override_key") == 0) {
+            *user_cfg = ParseOverrideKey(value);
+        }
+    } else {
+        return 0;
+    }
+    return 1;
+}
+
+OverrideKey Utils::GetTitleOverrideKey(u64 tid) {
+    OverrideKey cfg = g_default_override_key;
+    char path[FS_MAX_PATH+1] = {0};
+    snprintf(path, FS_MAX_PATH, "/atmosphere/titles/%016lx/config.ini", tid); 
+    FsFile cfg_file;
+    
+    if (R_SUCCEEDED(fsFsOpenFile(&g_sd_filesystem, path, FS_OPEN_READ, &cfg_file))) {
+        ON_SCOPE_EXIT { fsFileClose(&cfg_file); };
+        
+        size_t config_file_size = 0x20000;
+        fsFileGetSize(&cfg_file, &config_file_size);
+        
+        char *config_buf = reinterpret_cast<char *>(calloc(1, config_file_size + 1));
+        if (config_buf != NULL) {
+            ON_SCOPE_EXIT { free(config_buf); };
+            
+            /* Read title ini contents. */
+            fsFileRead(&cfg_file, 0, config_buf, config_file_size, &config_file_size);
+            
+            /* Parse title ini. */
+            ini_parse_string(config_buf, FsMitmTitleSpecificIniHandler, &cfg);
+        }
+    }
+    
+    return cfg;
+}
 
 void Utils::RefreshConfiguration() {
     FsFile config_file;
@@ -547,7 +630,7 @@ void Utils::RefreshConfiguration() {
     fsFileRead(&config_file, 0, g_config_ini_data, size, &r_s);
     fsFileClose(&config_file);
     
-    ini_parse_string(g_config_ini_data, FsMitMIniHandler, NULL);
+    ini_parse_string(g_config_ini_data, FsMitmIniHandler, NULL);
 }
 
 Result Utils::GetSettingsItemValueSize(const char *name, const char *key, u64 *out_size) {
@@ -556,4 +639,16 @@ Result Utils::GetSettingsItemValueSize(const char *name, const char *key, u64 *o
 
 Result Utils::GetSettingsItemValue(const char *name, const char *key, void *out, size_t max_size, u64 *out_size) {
     return SettingsItemManager::GetValue(name, key, out, max_size, out_size);
+}
+
+Result Utils::GetSettingsItemBooleanValue(const char *name, const char *key, bool *out) {
+    u8 val = 0;
+    u64 out_size;
+    Result rc = Utils::GetSettingsItemValue(name, key, &val, sizeof(val), &out_size);
+    if (R_SUCCEEDED(rc)) {
+        if (out) {
+            *out = val != 0;
+        }
+    }
+    return rc;
 }

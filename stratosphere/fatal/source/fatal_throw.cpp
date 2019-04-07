@@ -26,11 +26,11 @@ static bool g_thrown = false;
 static Result SetThrown() {
     /* This should be fine, since fatal only has a single IPC thread. */
     if (g_thrown) {
-        return FatalResult_AlreadyThrown;
+        return ResultFatalAlreadyThrown;
     }
     
     g_thrown = true;
-    return 0;
+    return ResultSuccess;
 }
 
 Result ThrowFatalForSelf(u32 error) {
@@ -41,7 +41,7 @@ Result ThrowFatalForSelf(u32 error) {
 }
 
 Result ThrowFatalImpl(u32 error, u64 pid, FatalType policy, FatalCpuContext *cpu_ctx) {
-    Result rc = 0;
+    Result rc = ResultSuccess;
     FatalThrowContext ctx = {0};
     ctx.error_code = error;
     if (cpu_ctx != nullptr) {
@@ -50,10 +50,18 @@ Result ThrowFatalImpl(u32 error, u64 pid, FatalType policy, FatalCpuContext *cpu
         for (u32 i = 0; i < NumAarch64Gprs; i++) {
             ctx.has_gprs[i] = true;
         }
+        /* Cap the stack trace size at a sane limit. */
+        /* TODO: Better to set to zero, in order to manually collect debug info ourselves instead? */
+        if (cpu_ctx->is_aarch32) {
+            ctx.cpu_ctx.aarch32_ctx.stack_trace_size = std::max(ctx.cpu_ctx.aarch32_ctx.stack_trace_size, static_cast<u32>(Aarch32CpuContext::MaxStackTraceDepth));
+        } else {
+            ctx.cpu_ctx.aarch64_ctx.stack_trace_size = std::max(ctx.cpu_ctx.aarch64_ctx.stack_trace_size, static_cast<u32>(Aarch64CpuContext::MaxStackTraceDepth));
+        }
     } else {
         std::memset(&ctx.cpu_ctx, 0, sizeof(ctx.cpu_ctx));
-        cpu_ctx = &ctx.cpu_ctx;
     }
+    /* Reassign this unconditionally, for convenience. */
+    cpu_ctx = &ctx.cpu_ctx;
     
     /* Get config. */
     const FatalConfig *config = GetFatalConfig();
@@ -61,7 +69,7 @@ Result ThrowFatalImpl(u32 error, u64 pid, FatalType policy, FatalCpuContext *cpu
     /* Get title id. On failure, it'll be zero. */
     u64 title_id = 0;
     pminfoGetTitleId(&title_id, pid);   
-    ctx.is_creport = title_id == 0x0100000000000036;
+    ctx.is_creport = title_id == TitleId_Creport;
     
     /* Support for ams creport. TODO: Make this its own command? */
     if (ctx.is_creport && !cpu_ctx->is_aarch32 && cpu_ctx->aarch64_ctx.afsr0 != 0) {
@@ -70,7 +78,7 @@ Result ThrowFatalImpl(u32 error, u64 pid, FatalType policy, FatalCpuContext *cpu
     
     /* Atmosphere extension: automatic debug info collection. */
     if (GetRuntimeFirmwareVersion() >= FirmwareVersion_200 && !ctx.is_creport) {
-        if ((cpu_ctx->is_aarch32 && cpu_ctx->aarch32_ctx.stack_trace_size == 0) || (!cpu_ctx->is_aarch32 && cpu_ctx->aarch32_ctx.stack_trace_size == 0)) {
+        if ((cpu_ctx->is_aarch32 && cpu_ctx->aarch32_ctx.stack_trace_size == 0) || (!cpu_ctx->is_aarch32 && cpu_ctx->aarch64_ctx.stack_trace_size == 0)) {
             TryCollectDebugInformation(&ctx, pid);
         }
     }
@@ -102,7 +110,7 @@ Result ThrowFatalImpl(u32 error, u64 pid, FatalType policy, FatalCpuContext *cpu
                     RunFatalTasks(&ctx, title_id, policy == FatalType_ErrorReportAndErrorScreen, &erpt_event, &battery_event);
                 } else {
                     /* If flag is not set, don't show the fatal screen. */
-                    return 0;
+                    return ResultSuccess;
                 }
                 
             }
@@ -112,5 +120,5 @@ Result ThrowFatalImpl(u32 error, u64 pid, FatalType policy, FatalCpuContext *cpu
             std::abort();
     }
     
-    return 0;
+    return ResultSuccess;
 }

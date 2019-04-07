@@ -1,4 +1,62 @@
 # Changelog
+## 0.8.6
++ A number of bugs were fixed, including:
+  + A case of inverted logic was fixed in fs.mitm which prevented the flags system from working correctly.
+  + Time service access was corrected in both creport/fatal.
+    + This fixes the timestamps used in fatal/crash report filenames.
+  + A coherency issue was fixed in exosphère's Security Engine driver.
+    + This fixes some instability issues encountered when overclocking the CPU.
+  + Loader now unmaps NROs correctly, when ldr:ro is used.
+    + This fixes a crash when repeatedly launching the web applet on < 3.0.0.
+  + Usage of hidKeysDown was corrected to hidKeysHeld in several modules.
+    + This fixes a rare issue where keypresses may have been incorrectly detected.
+  + An issue with code filesystem unmounting was fixed in loader.
+    + This issue could occasionally cause a fatal error 0x1015 to be thrown on boot.
+  + Two bugs were fixed in the implementations of dmnt's cheat virtual machine.
+    + These could cause cheats to work incorrectly under certain circumstances.
+  + PM now uses a static buffer instead of a dynamically allocated one during process launch.
+    + This fixes a memory exhaustion problem when building with gcc 8.3.0.
+  + A workaround for a deadlock bug in Horizon's kernel on >= 6.0.0 was added in dmnt.
+    + This prevents a system hang when booting certain titles with cheats enabled (ex: Mario Kart 8 Deluxe).
+  + set.mitm now reads the system firmware version directly from the system version archive, instead of calling into set:sys.
+    + This fixes compatibility with 1.0.0, which now successfully boots again.
++ dmnt's cheat virtual machine had some instruction set changes.
+  + A new opcode was added for beginning conditional blocks based on register contents.
+  + More addressing modes were added to the StoreRegisterToAddress opcode.
+  + These should allow for more complex cheats to be implemented.
++ A new system for saving the state of cheat toggles between game boots was added.
+  + Toggles are now saved to `atmosphere/titles/<title id>/cheats/toggles.txt` when either toggles were successfully loaded from that file or the system setting `atmosphere!dmnt_always_save_cheat_toggles` is non-zero.
+  + This removes the need for manually setting cheats from all-on or all-off to the desired state on each game boot.
++ The default behavior for loader's HBL support was changed.
+  + Instead of launching HBL when album is launched without R held, loader now launches HBL when album or any game is launched with R held.
+  + Loader will now override any app in addition to a specific title id when `hbl_config!override_any_app` is true in `loader.ini`.
+    + Accordingly, the `hbl_config!title_id=app` setting was deprecated. Support will be removed in Atmosphère 0.9.0.
++ First-class support was added to loader and fs.mitm for enabling homebrew to launch web applets.
+  + Loader will now cause the "HtmlDocument" NCA path to resolve for whatever title HBL is taking over, even if it would not normally do so.
+  + fs.mitm will also now cause requests to mount the HtmlDocument content for HBL's title to open the `sdmc:/atmosphere/hbl_html` folder.
+    + By default, this just contains a URL whitelist.
++ General system stability improvements to enhance the user's experience.
+## 0.8.5
++ Support was added for overriding content on a per-title basis, separate from HBL override.
+  + This allows for using mods on the same title that one uses to launch HBL.
+  + By default, `!L` is used for title content override (this is configurable by editing `default_config!override_key` in `loader.ini`)
+  + This key combination can be set on a per-title basis by creating a `atmosphere/titles/<title id>/config.ini`, and editing `override_config!override_key`.
++ Content headers were added for the embedded files inside of fusee-secondary.
+  + This will allow non-fusee bootloaders (like `hekate`) to extract the components bundled inside release binaries.
+  + This should greatly simplify the update process in the future, for users who do not launch Atmosphère using fusee.
++ Support for cheat codes was added.
+  + These are handled by a new `dmnt` sysmodule, which will also reimplement Nintendo's Debug Monitor in the future.
+  + Cheat codes can be enabled/disabled at application launch via a per-title key combination. 
+    + For details, please see the [cheat loading documentation](https://github.com/Atmosphere-NX/Atmosphere/blob/master/docs/cheats.md#cheat-loating-process).
+  + Cheat codes are fully backwards compatible with the pre-existing format, although a number of bugs have been fixed and some new features have been added.
+    + For details, please see [the compatibility documentation](https://github.com/Atmosphere-NX/Atmosphere/blob/master/docs/cheats.md#cheat-code-compatibility).
+  + An HIPC service API was added (`dmnt:cht`), that will allow user homebrew to interface with and control Atmosphère's cheat manager.
+    + Please see [the relevant documentation](https://github.com/Atmosphere-NX/Atmosphere/blob/master/docs/modules/dmnt.md).
+    + Full client code can be found in [libstratosphere](https://github.com/Atmosphere-NX/libstratosphere/blob/master/include/stratosphere/services/dmntcht.h).
+    + Users interested in interfacing should see [EdiZon](https://github.com/WerWolv/EdiZon), which should have support for interfacing with Atmosphère's API shortly after 0.8.5 releases.
++ A bug was fixed that would cause Atmosphère's fatal screen to not show on 1.0.0-2.3.0.
++ A bug was fixed that caused Atmosphère's automatic ProdInfo backups to be corrupt.
++ General system stability improvements to enhance the user's experience.
 ## 0.8.4
 + Support for 7.0.0/7.0.1 was added.
   + This is facilitated through a new payload, `sept`, which can be signed, encrypted, and then loaded by Nintendo's TSEC firmware.

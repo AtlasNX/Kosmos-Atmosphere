@@ -23,6 +23,10 @@
 #include "exocfg.h"
 
 #include "masterkey.h"
+
+static bool g_has_checked_for_rcm_bug_patch = false;
+static bool g_has_rcm_bug_patch = false;
+
 /* Prototypes for internal commands. */
 void fuse_make_regs_visible(void);
 
@@ -36,6 +40,11 @@ void fuse_init(void)
     fuse_make_regs_visible();
     fuse_secondary_private_key_disable();
     fuse_disable_programming();
+    
+    /* TODO: Should we allow this to be done later? */
+    if (!g_has_checked_for_rcm_bug_patch) {
+        (void)(fuse_has_rcm_bug_patch());
+    }
 
     /* TODO: Overrides (iROM patches) and various reads happen here */
 }
@@ -256,4 +265,40 @@ void fuse_get_hardware_info(void *dst) {
     hw_info[3] = (uint32_t)(vendor_code);
 
     memcpy(dst, hw_info, 0x10);
+}
+
+bool fuse_has_rcm_bug_patch(void) {
+    /* Only check for RCM bug patch once, and cache our result. */
+    if (!g_has_checked_for_rcm_bug_patch) {
+        /* Patched units have this bit set in reserved_sw, according to reports. */
+        if (FUSE_CHIP_REGS->FUSE_RESERVED_SW & 0x80) {
+            g_has_rcm_bug_patch = true;
+        }
+
+        /* Also check for an ipatch. */
+        {
+            uint32_t word_count = FUSE_CHIP_REGS->FUSE_FIRST_BOOTROM_PATCH_SIZE & 0x7f;
+            uint32_t word_addr = 191;
+
+            while (word_count) {
+                uint32_t word0 = fuse_hw_read(word_addr);
+                uint32_t ipatch_count = (word0 >> 16) & 0xf;
+
+                for (uint32_t i = 0; i < ipatch_count; i++) {
+                    uint32_t word = fuse_hw_read(word_addr - (i + 1));
+                    uint32_t addr = (word >> 16) * 2;
+
+                    if (addr == 0x769a) {
+                        g_has_rcm_bug_patch = true;
+                    }
+                }
+
+                word_addr -= word_count;
+                word_count = word0 >> 25;
+            }
+        }
+    }
+    g_has_checked_for_rcm_bug_patch = true;
+
+    return g_has_rcm_bug_patch;
 }

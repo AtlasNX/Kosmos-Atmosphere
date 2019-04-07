@@ -33,7 +33,7 @@ extern "C" {
 
     u32 __nx_applet_type = AppletType_None;
 
-    #define INNER_HEAP_SIZE 0x20000
+    #define INNER_HEAP_SIZE 0x30000
     size_t nx_inner_heap_size = INNER_HEAP_SIZE;
     char   nx_inner_heap[INNER_HEAP_SIZE];
     
@@ -64,23 +64,22 @@ void __appInit(void) {
     /* Initialize services we need (TODO: SPL) */
     rc = smInitialize();
     if (R_FAILED(rc)) {
-        fatalSimple(MAKERESULT(Module_Libnx, LibnxError_InitFail_SM));
+        std::abort();
     }
     
     rc = fsInitialize();
     if (R_FAILED(rc)) {
-        fatalSimple(MAKERESULT(Module_Libnx, LibnxError_InitFail_FS));
+        std::abort();
     }
         
-    
     rc = lrInitialize();
     if (R_FAILED(rc))  {
-        fatalSimple(0xCAFE << 4 | 1);
+        std::abort();
     }
     
     rc = fsldrInitialize();
     if (R_FAILED(rc))  {
-        fatalSimple(0xCAFE << 4 | 2);
+        std::abort();
     }
     
     CheckAtmosphereVersion(CURRENT_ATMOSPHERE_VERSION);

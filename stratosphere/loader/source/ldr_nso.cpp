@@ -18,7 +18,6 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
-#include "sha256.h"
 #include "lz4.h"
 #include "ldr_nso.hpp"
 #include "ldr_map.hpp"
@@ -71,11 +70,14 @@ FILE *NsoUtils::OpenNso(unsigned int index, u64 title_id) {
     if ((ecs = ContentManagement::GetExternalContentSource(title_id)) != nullptr) {
         return OpenNsoFromECS(index, ecs);
     }
+    
+    /* First, check HBL. */
+    if (ContentManagement::ShouldOverrideContentsWithHBL(title_id)) {
+        return OpenNsoFromHBL(index);
+    }
 
-    if (ContentManagement::ShouldOverrideContents(title_id)) {
-        if (ContentManagement::ShouldReplaceWithHBL(title_id)) {
-            return OpenNsoFromHBL(index);
-        }
+    /* Next, check secondary override. */
+    if (ContentManagement::ShouldOverrideContentsWithSD(title_id)) {
         FILE *f_out = OpenNsoFromSdCard(index, title_id);
         if (f_out != NULL) {
             return f_out;
@@ -83,6 +85,8 @@ FILE *NsoUtils::OpenNso(unsigned int index, u64 title_id) {
             return NULL;
         }
     }
+    
+    /* Finally, default to exefs. */
     return OpenNsoFromExeFS(index);
 }
 
@@ -103,13 +107,13 @@ Result NsoUtils::LoadNsoHeaders(u64 title_id) {
     
     /* Zero out the cache. */
     std::fill(g_nso_present, g_nso_present + NSO_NUM_MAX, false);
-    std::fill(g_nso_headers, g_nso_headers + NSO_NUM_MAX, (const NsoUtils::NsoHeader &){0});
+    std::fill(g_nso_headers, g_nso_headers + NSO_NUM_MAX, NsoUtils::NsoHeader{});
     
     for (unsigned int i = 0; i < NSO_NUM_MAX; i++) {
         f_nso = OpenNso(i, title_id);
         if (f_nso != NULL) {
             if (fread(&g_nso_headers[i], 1, sizeof(NsoUtils::NsoHeader), f_nso) != sizeof(NsoUtils::NsoHeader)) {
-                return 0xA09;
+                return ResultLoaderInvalidNso;
             }
             g_nso_present[i] = true;
             fclose(f_nso);
@@ -122,13 +126,13 @@ Result NsoUtils::LoadNsoHeaders(u64 title_id) {
         }
     }
     
-    return 0x0;
+    return ResultSuccess;
 }
 
 Result NsoUtils::ValidateNsoLoadSet() {
     /* We *must* have a "main" NSO. */
     if (!g_nso_present[1]) {
-        return 0xA09;
+        return ResultLoaderInvalidNso;
     }
     
     /* Behavior switches depending on whether we have an rtld. */
@@ -136,28 +140,29 @@ Result NsoUtils::ValidateNsoLoadSet() {
          /* If we have an rtld, dst offset for .text must be 0 for all other NSOs. */
         for (unsigned int i = 0; i < NSO_NUM_MAX; i++) {
             if (g_nso_present[i] && g_nso_headers[i].segments[0].dst_offset != 0) {
-                return 0xA09;
+                return ResultLoaderInvalidNso;
             }
         }
     } else {
         /* If we don't have an rtld, we must ONLY have a main. */
         for (unsigned int i = 2; i < NSO_NUM_MAX; i++) {
             if (g_nso_present[i]) {
-                return 0xA09;
+                return ResultLoaderInvalidNso;
             }
         }
         /* That main's .text must be at dst_offset 0. */
         if (g_nso_headers[1].segments[0].dst_offset != 0) {
-            return 0xA09;
+            return ResultLoaderInvalidNso;
         }
     }
     
-    return 0x0;
+    return ResultSuccess;
 }
 
 
 Result NsoUtils::CalculateNsoLoadExtents(u32 addspace_type, u32 args_size, NsoLoadExtents *extents) {
-    *extents = (const NsoUtils::NsoLoadExtents){0};
+    *extents = {};
+
     /* Calculate base offsets. */
     for (unsigned int i = 0; i < NSO_NUM_MAX; i++) {
         if (g_nso_present[i]) {
@@ -204,7 +209,7 @@ Result NsoUtils::CalculateNsoLoadExtents(u32 addspace_type, u32 args_size, NsoLo
                 break;
             default:
                 /* TODO: Panic. */
-                return 0xD001;
+                return ResultKernelOutOfMemory;
         }
     } else {
         if (addspace_type & 2) {
@@ -216,7 +221,7 @@ Result NsoUtils::CalculateNsoLoadExtents(u32 addspace_type, u32 args_size, NsoLo
         }
     }
     if (extents->total_size > addspace_size) {
-        return 0xD001;
+        return ResultKernelOutOfMemory;
     }
     
     u64 aslr_slide = 0;
@@ -234,7 +239,7 @@ Result NsoUtils::CalculateNsoLoadExtents(u32 addspace_type, u32 args_size, NsoLo
         extents->args_address += extents->base_address;
     }
     
-    return 0x0;
+    return ResultSuccess;
 }
 
 
@@ -245,10 +250,10 @@ Result NsoUtils::LoadNsoSegment(u64 title_id, unsigned int index, unsigned int s
     size_t out_size = g_nso_headers[index].segments[segment].decomp_size;
     size_t size = is_compressed ? g_nso_headers[index].compressed_sizes[segment] : out_size;
     if (size > out_size) {
-        return 0xA09;
+        return ResultLoaderInvalidNso;
     }
     if ((u32)(size | out_size) >> 31) {
-        return 0xA09;
+        return ResultLoaderInvalidNso;
     }
     
     u8 *dst_addr = map_base + g_nso_headers[index].segments[segment].dst_offset;
@@ -257,35 +262,31 @@ Result NsoUtils::LoadNsoSegment(u64 title_id, unsigned int index, unsigned int s
     
     fseek(f_nso, g_nso_headers[index].segments[segment].file_offset, SEEK_SET);
     if (fread(load_addr, 1, size, f_nso) != size) {
-        return 0xA09;
+        return ResultLoaderInvalidNso;
     }
     
     
     if (is_compressed) {
         if (LZ4_decompress_safe((char *)load_addr, (char *)dst_addr, size, out_size) != (int)out_size) {
-            return 0xA09;
+            return ResultLoaderInvalidNso;
         }
     }
 
     
     if (check_hash) {
         u8 hash[0x20] = {0};
-        struct sha256_state sha_ctx;
-        sha256_init(&sha_ctx);
-        sha256_update(&sha_ctx, dst_addr, out_size);
-        sha256_finalize(&sha_ctx);
-        sha256_finish(&sha_ctx, hash);
+        sha256CalculateHash(hash, dst_addr, out_size);
 
         if (std::memcmp(g_nso_headers[index].section_hashes[segment], hash, sizeof(hash))) {
-            return 0xA09;
+            return ResultLoaderInvalidNso;
         }
     }
     
-    return 0x0;
+    return ResultSuccess;
 }
 
 Result NsoUtils::LoadNsosIntoProcessMemory(Handle process_h, u64 title_id, NsoLoadExtents *extents, u8 *args, u32 args_size) {
-    Result rc = 0xA09;
+    Result rc = ResultLoaderInvalidNso;
     for (unsigned int i = 0; i < NSO_NUM_MAX; i++) {
         if (g_nso_present[i]) {
             AutoCloseMap nso_map;
@@ -297,8 +298,8 @@ Result NsoUtils::LoadNsosIntoProcessMemory(Handle process_h, u64 title_id, NsoLo
                         
             FILE *f_nso = OpenNso(i, title_id);
             if (f_nso == NULL) {
-                /* Is there a better error to return here? */
-                return 0xA09;
+                /* TODO: Is there a better error to return here? */
+                return ResultLoaderInvalidNso;
             }
             for (unsigned int seg = 0; seg < 3; seg++) {
                 if (R_FAILED((rc = LoadNsoSegment(title_id, i, seg, f_nso, map_base, map_base + extents->nso_sizes[i])))) {
