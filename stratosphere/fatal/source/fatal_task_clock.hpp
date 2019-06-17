@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -21,6 +21,7 @@
 
 class AdjustClockTask : public IFatalTask {
     private:
+        Result AdjustClockForModule(PcvModule module, u32 hz);
         Result AdjustClock();
     public:
         AdjustClockTask(FatalThrowContext *ctx, u64 title_id) : IFatalTask(ctx, title_id) { }

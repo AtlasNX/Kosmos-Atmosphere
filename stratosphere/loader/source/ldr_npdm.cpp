@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -117,8 +117,15 @@ Result NpdmUtils::LoadNpdmInternal(FILE *f_npdm, NpdmUtils::NpdmCache *cache) {
         return rc;
     }
     
-    if (info->header->mmu_flags > 0xF) {
-        return rc;
+    /* 7.0.0 added 0x10 as a valid bit to NPDM flags. */
+    if (GetRuntimeFirmwareVersion() >= FirmwareVersion_700) {
+        if (info->header->mmu_flags > 0x1F) {
+            return rc;
+        }
+    } else {
+        if (info->header->mmu_flags > 0xF) {
+            return rc;
+        }
     }
     
     if (info->header->aci0_offset < sizeof(NpdmUtils::NpdmHeader) || info->header->aci0_size < sizeof(NpdmUtils::NpdmAci0) || info->header->aci0_offset + info->header->aci0_size > npdm_size) {
@@ -201,7 +208,7 @@ Result NpdmUtils::LoadNpdm(u64 tid, NpdmInfo *out) {
     if (ContentManagement::ShouldOverrideContentsWithHBL(tid) && R_SUCCEEDED(LoadNpdmInternal(OpenNpdmFromExeFS(), &g_original_npdm_cache))) {
         NpdmInfo *original_info = &g_original_npdm_cache.info;
         /* Fix pool partition. */
-        if (kernelAbove500()) {
+        if ((GetRuntimeFirmwareVersion() >= FirmwareVersion_500)) {
             info->acid->flags = (info->acid->flags & 0xFFFFFFC3) | (original_info->acid->flags & 0x0000003C);
         }
         /* Fix application type. */
@@ -499,7 +506,7 @@ u32 NpdmUtils::GetApplicationType(u32 *caps, size_t num_caps) {
             }
         }
         /* After 1.0.0, allow_debug is used as bit 4. */
-        if (kernelAbove200() && (caps[i] & 0x1FFFF) == 0xFFFF) {
+        if ((GetRuntimeFirmwareVersion() >= FirmwareVersion_200) && (caps[i] & 0x1FFFF) == 0xFFFF) {
             application_type |= (caps[i] >> 15) & 4;
         }
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -18,29 +18,60 @@
 #include <switch.h>
 #include <stratosphere.hpp>
 
-enum BisStorageId : u32 {
-    BisStorageId_Boot0 = 0,
-    BisStorageId_Boot1 = 10,
-    BisStorageId_RawNand = 20,
-    BisStorageId_BcPkg2_1 = 21,
-    BisStorageId_BcPkg2_2 = 22,
-    BisStorageId_BcPkg2_3 = 23,
-    BisStorageId_BcPkg2_4 = 24,
-    BisStorageId_BcPkg2_5 = 25,
-    BisStorageId_BcPkg2_6 = 26,
-    BisStorageId_Prodinfo = 27,
-    BisStorageId_ProdinfoF = 28,
-    BisStorageId_Safe = 29,
-    BisStorageId_User = 30,
-    BisStorageId_System = 31,
-    BisStorageId_SystemProperEncryption = 32,
-    BisStorageId_SystemProperPartition = 33,
-};
-
 struct OverrideKey {
     u64 key_combination;
     bool override_by_default;
 };
+
+struct OverrideLocale {
+    u64 language_code;
+    u32 region_code;
+};
+
+enum RegionCode : u32 {
+    RegionCode_Japan = 0,
+    RegionCode_America = 1,
+    RegionCode_Europe = 2,
+    RegionCode_Australia = 3,
+    RegionCode_China = 4,
+    RegionCode_Korea = 5,
+    RegionCode_Taiwan = 6,
+
+    RegionCode_Max,
+};
+
+static constexpr inline u64 EncodeLanguageCode(const char *code) {
+    u64 lang_code = 0;
+    for (size_t i = 0; i < sizeof(lang_code); i++) {
+        if (code[i] == '\x00') {
+            break;
+        }
+        lang_code |= static_cast<u64>(code[i]) << (8ul * i);
+    }
+    return lang_code;
+}
+
+enum LanguageCode : u64 {
+    LanguageCode_Japanese = EncodeLanguageCode("ja"),
+    LanguageCode_AmericanEnglish = EncodeLanguageCode("en-US"),
+    LanguageCode_French = EncodeLanguageCode("fr"),
+    LanguageCode_German = EncodeLanguageCode("de"),
+    LanguageCode_Italian = EncodeLanguageCode("it"),
+    LanguageCode_Spanish = EncodeLanguageCode("es"),
+    LanguageCode_Chinese = EncodeLanguageCode("zh-CN"),
+    LanguageCode_Korean = EncodeLanguageCode("ko"),
+    LanguageCode_Dutch = EncodeLanguageCode("nl"),
+    LanguageCode_Portuguese = EncodeLanguageCode("pt"),
+    LanguageCode_Russian = EncodeLanguageCode("ru"),
+    LanguageCode_Taiwanese = EncodeLanguageCode("zh-TW"),
+    LanguageCode_BritishEnglish = EncodeLanguageCode("en-GB"),
+    LanguageCode_CanadianFrench = EncodeLanguageCode("fr-CA"),
+    LanguageCode_LatinAmericanSpanish = EncodeLanguageCode("es-419"),
+    /* 4.0.0+ */
+    LanguageCode_SimplifiedChinese = EncodeLanguageCode("zh-Hans"),
+    LanguageCode_TraditionalChinese = EncodeLanguageCode("zh-Hant"),
+};
+
 
 class Utils {
     public:
@@ -82,11 +113,16 @@ class Utils {
         static OverrideKey GetTitleOverrideKey(u64 tid);
         static bool HasOverrideButton(u64 tid);
 
+        static OverrideLocale GetTitleOverrideLocale(u64 tid);
+
         /* Settings! */
         static Result GetSettingsItemValueSize(const char *name, const char *key, u64 *out_size);
         static Result GetSettingsItemValue(const char *name, const char *key, void *out, size_t max_size, u64 *out_size);
 
         static Result GetSettingsItemBooleanValue(const char *name, const char *key, bool *out);
+
+        /* Error occurred. */
+        static void RebootToFatalError(AtmosphereFatalErrorContext *ctx);
     private:
         static void RefreshConfiguration();
 };

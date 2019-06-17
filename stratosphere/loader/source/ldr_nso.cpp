@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -21,7 +21,6 @@
 #include "lz4.h"
 #include "ldr_nso.hpp"
 #include "ldr_map.hpp"
-#include "ldr_random.hpp"
 #include "ldr_patcher.hpp"
 #include "ldr_content_management.hpp"
 
@@ -192,7 +191,7 @@ Result NsoUtils::CalculateNsoLoadExtents(u32 addspace_type, u32 args_size, NsoLo
     
     /* Calculate ASLR extents for address space type. */
     u64 addspace_start, addspace_size;
-    if (kernelAbove200()) {
+    if ((GetRuntimeFirmwareVersion() >= FirmwareVersion_200)) {
         switch (addspace_type & 0xE) {
             case 0:
             case 4:
@@ -208,8 +207,7 @@ Result NsoUtils::CalculateNsoLoadExtents(u32 addspace_type, u32 args_size, NsoLo
                 addspace_size = 0x7FF8000000ULL;
                 break;
             default:
-                /* TODO: Panic. */
-                return ResultKernelOutOfMemory;
+                std::abort();
         }
     } else {
         if (addspace_type & 2) {
@@ -226,7 +224,7 @@ Result NsoUtils::CalculateNsoLoadExtents(u32 addspace_type, u32 args_size, NsoLo
     
     u64 aslr_slide = 0;
     if (addspace_type & 0x20) {
-        aslr_slide = RandomUtils::GetRandomU64((addspace_size - extents->total_size) >> 21) << 21;
+        aslr_slide = StratosphereRandomUtils::GetRandomU64((addspace_size - extents->total_size) >> 21) << 21;
     }
     
     extents->base_address = addspace_start + aslr_slide;

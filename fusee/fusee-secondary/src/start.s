@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -93,6 +93,7 @@ _metadata:
 #define CONTENT_TYPE_SP2 5
 #define CONTENT_TYPE_KIP 6
 #define CONTENT_TYPE_BMP 7
+#define CONTENT_TYPE_EMC 8
 
 _content_headers:
 /* ams_mitm content header */
@@ -103,20 +104,12 @@ _content_headers:
 .asciz "ams_mitm"
 .align 5
 
-/* boot_100 content header */
-.word __boot_100_kip_start__
-.word __boot_100_kip_size__
+/* boot content header */
+.word __boot_kip_start__
+.word __boot_kip_size__
 .word CONTENT_TYPE_KIP
 .word 0xCCCCCCCC
-.asciz "boot_100"
-.align 5
-
-/* boot_200 content header */
-.word __boot_200_kip_start__
-.word __boot_200_kip_size__
-.word CONTENT_TYPE_KIP
-.word 0xCCCCCCCC
-.asciz "boot_200"
+.asciz "boot"
 .align 5
 
 /* exosphere content header */
@@ -189,6 +182,22 @@ _content_headers:
 .word CONTENT_TYPE_KIP
 .word 0xCCCCCCCC
 .asciz "sm"
+.align 5
+
+/* spl content header */
+.word __spl_kip_start__
+.word __spl_kip_size__
+.word CONTENT_TYPE_KIP
+.word 0xCCCCCCCC
+.asciz "spl"
+.align 5
+
+/* emummc content header */
+.word __emummc_kip_start__
+.word __emummc_kip_size__
+.word CONTENT_TYPE_EMC
+.word 0xCCCCCCCC
+.asciz "emummc"
 .align 5
 
 /* splash_screen content header */

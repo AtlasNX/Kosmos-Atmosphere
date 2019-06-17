@@ -1,4 +1,91 @@
 # Changelog
+## 0.9.0
++ Creport output was improved significantly.
+  + Thread names are now dumped on crash in addition to 0x100 of TLS from each thread.
+    + This significantly aids debugging efforts for crashes.
+  + Support was added for 32-bit stackframes, so reports can now be generated for 32-bit games.
++ `dmnt`'s Cheat VM was extended to add a new debug opcode.
++ With thanks to/collaboration with @m4xw and @CTCaer, support was added for redirecting NAND to the SD card (emummc).
+  + Please note, this support is very much **beta/experimental**.
+    + It is quite likely we have not identified all bugs -- those will be fixed as they are reported over the next few days/weeks.
+    + In addition, some niceties (e.g. having a separate Atmosphere folder per emummc instance) still need some thought put in before they can be implemented in a way that makes everyone happy.
+    + If you are not an advanced user, you may wish to think about waiting for the inevitable 0.9.1 bugfix update before using emummc as your default boot option.
+      + You may especially wish to consider waiting if you are using Atmosphere on a unit with the RCM bug patched.
+  + Emummc is managed by editing the emummc section of "emummc/emummc.ini".
+    + To enable emummc, set `emummc!emummc_enabled` = 1.
+  + Support is included for redirecting NAND to a partition on the SD card.
+    + This can be done by setting `emummc!emummc_sector` to the start sector of your partition (e.g., `emummc_sector = 0x1A010000`).
+  + Support is also included for redirecting NAND to a collection of loose files on the SD card.
+    + This can be done by setting `emummc!emummc_path` to the folder (with archive bit set) containing the NAND boot partitions' files "boot0" and "boot1", and the raw NAND image files "00", "01", "02", etc. (single "00" file with the whole NAND image requires exFAT mode while multipart NAND can be used in both exFAT and FAT32 modes).
+  + The `Nintendo` contents directory can be redirected arbitrarily.
+    + By default, it will be redirected to `emummc/Nintendo_XXXX`, where `XXXX` is the hexadecimal representation of the emummc's ID.
+      + The current emummc ID may be selected by changing `emummc!emummc_id` in emummc.ini.
+    + This can be set to any arbitrary directory by setting `emummc!emummc_nintendo_path`.
+  + To create a backup usable for emummc, users may use tools provided by the [hekate](https://github.com/CTCaer/hekate) project.
+  + If, when using emummc, you encounter a bug, *please be sure to report it* -- that's the only way we can fix it. :)
+## 0.8.10
++ A bug was fixed that could cause incorrect system memory allocation on 5.0.0.
+  + 5.0.0 should now correctly have an additional 12 MiB allocated for sysmodules.
++ Atmosphère features which check button presses now consider all controllers, isntead of just P1.
++ Support was added for configuring language/region on a per-game basis.
+  + This is managed by editing `atmosphere/titles/<title id>/config.ini` for the game.
+  + To edit title language, edit `override_config!override_language`.
+    + The languages supported are `ja`, `en-US`, `fr`, `de`, `it`, `es`, `zh-CN`, `ko`, `nl`, `pt`, `ru`, `zh-TW`, `en-GB`, `fr-CA`, `es-419`, `zh-Hans`, `zh-Hant`.
+  + To edit title region, edit `override_config!override_region`.
+    + The regions supported are `jpn`, `usa`, `eur`, `aus`, `chn`, `kor`, `twn`.
++ Atmosphère now provides a reimplementation of the `boot` system module.
+  + `boot` is responsible for performing hardware initialization, showing the Nintendo logo, and repairing NAND on system update failure.
+  + Atmosphère's `boot` implementation preserves AutoRCM during NAND repair.
+    + NAND repair occurs when an unexpected shutdown or error happens during a system update.
+    + This fixes a final edge case where AutoRCM might be removed by HOS, which could cause a user to burn fuses.
++ General system stability improvements to enhance the user's experience.
+## 0.8.9
++ A number of bugs were fixed, including:
+  + A data abort was fixed when mounting certain partitions on NAND.
+  + All Stratosphère system modules now only maintain a connection to `sm` when actively using it.
+    + This helps mitigate the scenario where sm hits the limit of 64 active connections and crashes.
+    + This sometimes caused crashes when custom non-Atmosphère sysmodules were active and the user played certain games (ex: Smash's Stage Builder).
+  + fatal now uses the 8.0.0 clkrst API, instead of silently failing to adjust clock rates on that firmware version.
+  + A wait loop is now performed when trying to get a session to `sm`, in the case where `sm:` is not yet registered.
+    + This fixes a race condition that could cause a failure to boot under certain circumstances.
+  + libstratosphere's handling of domain object closing has been improved.
+    + Previously, this code could cause crashes/extremely odd behavior (misinterpreting what object a service is) under certain circumstances.
++ An optional automatic reboot timer was added to fatal.
+  + By setting the system setting `atmosphere!fatal_auto_reboot_interval` to a non-zero u64 value, fatal can be made to automatically reboot after a certain number of milliseconds.
+  + If the setting is zero or not present, fatal will wait for user input as usual.
++ Atmosphère now provides a reimplementation of the `ro` system module.
+  + `ro` is responsible for loading dynamic libraries (NROs) on 3.0.0+.
+    + On 1.0.0-2.3.0, this is handled by `loader`.
+  + Atmosphere's `ro` provides this functionality (`ldr:ro`, `ro:dmnt`) on all firmware versions.
+  + An extension was implemented to provide support for applying IPS patches to NROs.
+    + All patches at paths like /atmosphere/nro_patches/<user-defined patch name>/<Hex Build-ID for NRO to patch>.ips will be applied, allowing for easy distribution of patches.
+    + Both the IPS and IPS32 formats are supported.
++ Atmosphère now provides a reimplementation of the `spl` system module.
+  + `spl` (Secure Platform Services) is responsible for cryptographic operations, including all communications with the secure monitor (exosphère).
+  + In the future, this may be used to provide extensions to the API for interacting with exosphère from userland.
++ General system stability improvements to enhance the user's experience.
+## 0.8.8
++ Support was added for firmware version 8.0.0.
++ Custom exception handlers were added to stratosphere modules.
+  + If a crash happens in a core atmosphere module now, instead of silently failing a reboot will occur to log the information to the SD card.
++ A bug was fixed in creport that caused games to hang when crashing under certain circumstances.
++ A bug was fixed that prevented maintenance mode from booting on 7.0.0+.
++ General system stability improvements to enhance the user's experience.
+## 0.8.7
++ A few bugs were fixed that could cause fatal to fail to show an error under certain circumstances.
++ A bug was fixed that caused an error when launching certain games (e.g. Hellblade: Senua's Sacrifice).
+  + Loader had support added in ams-0.8.4 for a new (7.0.0+) flag bit in NPDMs during process creation, but forgot to allow this bit to be set when validating the NPDM.
++ dmnt's cheat virtual machine received new instructions.
+  + These allow for saving, restoring, or clearing registers to a secondary bank, effectively doubling the number of values that can be stored.
++ SHA256 code has been swapped from linux code to libnx's new hw-accelerated cryptography API.
++ Extensions were added to smcGetInfo:
+  + A ConfigItem was added to detect whether the current unit has the RCM bug patched.
+  + A ConfigItem was added to retrieve the current Atmosphère build hash.
++ Exosphère now tells the kernel to enable user-mode exception handlers, which should allow for better crash reporting/detection from Atmosphère's modules in the future..
++ Opt-in support was added for redirecting game save files to directories on the SD card.
+  + Please note, this feature is **experimental**, and may cause problems. Please use at your own risk (and back up your saves before enabling it), as it still needs testing.
+  + This can be enabled by setting `atmosphere!fsmitm_redirect_saves_to_sd` to 1 in `system_settings.ini`.
++ General system stability improvements to enhance the user's experience.
 ## 0.8.6
 + A number of bugs were fixed, including:
   + A case of inverted logic was fixed in fs.mitm which prevented the flags system from working correctly.

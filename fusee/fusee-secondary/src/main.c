@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -39,6 +39,7 @@
 
 extern void (*__program_exit_callback)(int rc);
 
+static __attribute__((__aligned__(0x200))) stage2_args_t g_stage2_args_store;
 static stage2_args_t *g_stage2_args;
 static bool g_do_nxboot;
 
@@ -51,17 +52,19 @@ static void setup_env(void) {
     /* Set up exception handlers. */
     setup_exception_handlers();
 
-    if (nxfs_mount_all() < 0) {
-        fatal_error("Failed to mount at least one parition: %s\n", strerror(errno));
+    /* Initialize the file system by mounting the SD card. */
+    if (nxfs_init() < 0) {
+        fatal_error("Failed to initialize the file system: %s\n", strerror(errno));
     }
     
     /* Train DRAM. */
     train_dram();
 }
 
+
 static void cleanup_env(void) {
     /* Unmount everything (this causes all open files to be flushed and closed) */
-    nxfs_unmount_all();
+    nxfs_end();
     //console_end();
 }
 
@@ -84,7 +87,8 @@ int main(int argc, void **argv) {
         generic_panic();
     }
     
-    g_stage2_args = (stage2_args_t *)argv[STAGE2_ARGV_ARGUMENT_STRUCT];
+    g_stage2_args = &g_stage2_args_store;
+    memcpy(g_stage2_args, (stage2_args_t *)argv[STAGE2_ARGV_ARGUMENT_STRUCT], sizeof(*g_stage2_args));
 
     if (g_stage2_args->version != 0) {
         generic_panic();
@@ -101,10 +105,11 @@ int main(int argc, void **argv) {
     
     /* Load BCT0 from SD if needed. */
     if (strcmp(g_stage2_args->bct0, "") == 0) {
-        read_from_file(g_stage2_args->bct0, sizeof(g_stage2_args->bct0) - 1, "atmosphere/BCT.ini");
-        if (!read_from_file(g_stage2_args->bct0, sizeof(g_stage2_args->bct0) - 1, "atmosphere/BCT.ini")) {
+        uint32_t bct_tmp_buf[sizeof(g_stage2_args->bct0) / sizeof(uint32_t)] = {0};
+        if (!read_from_file(bct_tmp_buf, sizeof(bct_tmp_buf) - 1, "atmosphere/BCT.ini")) {
             fatal_error("Failed to read BCT0 from SD!\n");
         }
+        memcpy(g_stage2_args->bct0, bct_tmp_buf, sizeof(bct_tmp_buf));
     }
 
     /* This will load all remaining binaries off of the SD. */
@@ -118,6 +123,8 @@ int main(int argc, void **argv) {
         uint32_t boot_memaddr = nxboot_main();
         /* Wait for the splash screen to have been displayed as long as it should be. */
         splash_screen_wait_delay();
+        /* Cleanup environment. */
+        cleanup_env();
         /* Finish boot. */
         nxboot_finish(boot_memaddr);
     } else {

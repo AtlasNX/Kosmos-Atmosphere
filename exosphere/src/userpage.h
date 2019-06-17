@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -33,7 +33,7 @@ typedef struct {
 
 bool upage_init(upage_ref_t *user_page, void *user_address);
 
-bool user_copy_to_secure(upage_ref_t *user_page, void *secure_dst, void *user_src, size_t size);
-bool secure_copy_to_user(upage_ref_t *user_page, void *user_dst, void *secure_src, size_t size);
+bool user_copy_to_secure(upage_ref_t *user_page, void *secure_dst, const void *user_src, size_t size);
+bool secure_copy_to_user(upage_ref_t *user_page, void *user_dst, const void *secure_src, size_t size);
 
 #endif

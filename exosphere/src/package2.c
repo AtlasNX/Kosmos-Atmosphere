@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -144,6 +144,7 @@ static void setup_se(void) {
                 master_kek_source_ind = MASTERKEY_REVISION_620 - MASTERKEY_REVISION_620;
                 break;
             case ATMOSPHERE_TARGET_FIRMWARE_700:
+            case ATMOSPHERE_TARGET_FIRMWARE_800:
                 master_kek_source_ind = MASTERKEY_REVISION_700_CURRENT - MASTERKEY_REVISION_620;
                 break;
             default:
@@ -179,6 +180,7 @@ static void setup_se(void) {
         case ATMOSPHERE_TARGET_FIRMWARE_600:
         case ATMOSPHERE_TARGET_FIRMWARE_620:
         case ATMOSPHERE_TARGET_FIRMWARE_700:
+        case ATMOSPHERE_TARGET_FIRMWARE_800:
             derive_new_device_keys(KEYSLOT_SWITCH_5XNEWDEVICEKEYGENKEY);
             break;
     }
@@ -334,10 +336,15 @@ static bool validate_package2_metadata(package2_meta_t *metadata) {
         }
 
         /* Ensure no overlap with later sections. */
-        for (unsigned int later_section = section + 1; later_section < PACKAGE2_SECTION_MAX; later_section++) {
-            uint32_t later_section_end = metadata->section_offsets[later_section] + metadata->section_sizes[later_section];
-            if (overlaps(metadata->section_offsets[section], section_end, metadata->section_offsets[later_section], later_section_end)) {
-                return false;
+        if (metadata->section_sizes[section] != 0) {
+            for (unsigned int later_section = section + 1; later_section < PACKAGE2_SECTION_MAX; later_section++) {
+                if (metadata->section_sizes[later_section] == 0) {
+                    continue;
+                }
+                uint32_t later_section_end = metadata->section_offsets[later_section] + metadata->section_sizes[later_section];
+                if (overlaps(metadata->section_offsets[section], section_end, metadata->section_offsets[later_section], later_section_end)) {
+                    return false;
+                }
             }
         }
 
@@ -390,7 +397,7 @@ static uint32_t decrypt_and_validate_header(package2_header_t *header) {
         }
 
         /* Ensure we successfully decrypted the header. */
-        if (mkey_rev > mkey_get_revision()) {        
+        if (mkey_rev > mkey_get_revision()) {
             panic(0xFAF00003);
         }
     } else if (!validate_package2_metadata(&header->metadata)) {
@@ -487,6 +494,7 @@ static void copy_warmboot_bin_to_dram() {
             warmboot_src = (uint8_t *)0x4003D800;
             break;
         case ATMOSPHERE_TARGET_FIRMWARE_700:
+        case ATMOSPHERE_TARGET_FIRMWARE_800:
             warmboot_src = (uint8_t *)0x4003E000;
             break;
     }
@@ -530,6 +538,9 @@ void load_package2(coldboot_crt0_reloc_list_t *reloc_list) {
     /* Load Exosphere-specific config. */
     exosphere_load_config();
     configitem_set_debugmode_override(exosphere_should_override_debugmode_user() != 0, exosphere_should_override_debugmode_priv() != 0);
+    if (exosphere_should_disable_usermode_exception_handlers() != 0) {
+        configitem_disable_usermode_exception_handlers();
+    }
 
     /* Setup the Security Engine. */
     setup_se();
@@ -554,6 +565,7 @@ void load_package2(coldboot_crt0_reloc_list_t *reloc_list) {
                 MAKE_REG32(PMC_BASE + 0x360) = 0xA8;
                 break;
             case ATMOSPHERE_TARGET_FIRMWARE_700:
+            case ATMOSPHERE_TARGET_FIRMWARE_800:
                 MAKE_REG32(PMC_BASE + 0x360) = 0x129;
                 break;
         }

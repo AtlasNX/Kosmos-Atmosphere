@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -22,7 +22,7 @@ void StopSoundTask::StopSound() {
     /* Talk to the ALC5639 over I2C, and disable audio output. */
     {
         I2cSession audio;
-        if (R_SUCCEEDED(i2cOpenSession(&audio, I2cDevice_AudioCodec))) {
+        if (R_SUCCEEDED(i2cOpenSession(&audio, I2cDevice_Alc5639))) {
             struct {
                 u16 dev;
                 u8 val;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -25,12 +25,13 @@
 
 #include "../utils.hpp"
 #include "fsmitm_boot0storage.hpp"
-#include "fsmitm_romstorage.hpp"
 #include "fsmitm_layeredrom.hpp"
 
 #include "fs_dir_utils.hpp"
 #include "fs_save_utils.hpp"
+#include "fs_file_storage.hpp"
 #include "fs_subdirectory_filesystem.hpp"
+#include "fs_directory_redirection_filesystem.hpp"
 #include "fs_directory_savedata_filesystem.hpp"
 
 #include "../debug.hpp"
@@ -161,14 +162,52 @@ Result FsMitmService::OpenFileSystemWithId(Out<std::shared_ptr<IFileSystemInterf
     return this->OpenHblWebContentFileSystem(out_fs);
 }
 
+Result FsMitmService::OpenSdCardFileSystem(Out<std::shared_ptr<IFileSystemInterface>> out_fs) {
+    /* We only care about redirecting this for NS/Emummc. */
+    if (this->title_id != TitleId_Ns) {
+        return ResultAtmosphereMitmShouldForwardToSession;
+    }
+    if (!IsEmummc()) {
+        return ResultAtmosphereMitmShouldForwardToSession;
+    }
+
+    std::shared_ptr<IFileSystemInterface> fs = nullptr;
+    u32 out_domain_id = 0;
+    Result rc = ResultSuccess;
+
+    ON_SCOPE_EXIT {
+        if (R_SUCCEEDED(rc)) {
+            out_fs.SetValue(std::move(fs));
+            if (out_fs.IsDomain()) {
+                out_fs.ChangeObjectId(out_domain_id);
+            }
+        }
+    };
+
+    /* Mount the SD card. */
+    FsFileSystem sd_fs;
+    if (R_FAILED((rc = fsMountSdcard(&sd_fs)))) {
+        return rc;
+    }
+
+    std::shared_ptr<IFileSystem> redir_fs = std::make_shared<DirectoryRedirectionFileSystem>(new ProxyFileSystem(sd_fs), "/Nintendo", GetEmummcNintendoDirPath());
+    fs = std::make_shared<IFileSystemInterface>(redir_fs);
+    if (out_fs.IsDomain()) {
+        out_domain_id = sd_fs.s.object_id;
+    }
+
+    return rc;
+}
+
 Result FsMitmService::OpenSaveDataFileSystem(Out<std::shared_ptr<IFileSystemInterface>> out_fs, u8 space_id, FsSave save_struct) {
     bool should_redirect_saves = false;
+    const bool has_redirect_save_flags = Utils::HasFlag(this->title_id, "redirect_save");
     if (R_FAILED(Utils::GetSettingsItemBooleanValue("atmosphere", "fsmitm_redirect_saves_to_sd", &should_redirect_saves))) {
         return ResultAtmosphereMitmShouldForwardToSession;
     }
 
-    /* For now, until we're sure this is robust, only intercept normal savedata. */
-    if (!should_redirect_saves || save_struct.SaveDataType != FsSaveDataType_SaveData) {
+    /* For now, until we're sure this is robust, only intercept normal savedata , check if flag exist*/
+    if (!has_redirect_save_flags || !should_redirect_saves || save_struct.SaveDataType != FsSaveDataType_SaveData) {
         return ResultAtmosphereMitmShouldForwardToSession;
     }
 
@@ -240,10 +279,11 @@ Result FsMitmService::OpenSaveDataFileSystem(Out<std::shared_ptr<IFileSystemInte
 }
 
 /* Gate access to the BIS partitions. */
-Result FsMitmService::OpenBisStorage(Out<std::shared_ptr<IStorageInterface>> out_storage, u32 bis_partition_id) {
+Result FsMitmService::OpenBisStorage(Out<std::shared_ptr<IStorageInterface>> out_storage, u32 _bis_partition_id) {
     std::shared_ptr<IStorageInterface> storage = nullptr;
     u32 out_domain_id = 0;
     Result rc = ResultSuccess;
+    const FsBisStorageId bis_partition_id = static_cast<FsBisStorageId>(_bis_partition_id);
 
     ON_SCOPE_EXIT {
         if (R_SUCCEEDED(rc)) {
@@ -261,30 +301,32 @@ Result FsMitmService::OpenBisStorage(Out<std::shared_ptr<IStorageInterface>> out
             const bool is_sysmodule = TitleIdIsSystem(this->title_id);
             const bool has_bis_write_flag = Utils::HasFlag(this->title_id, "bis_write");
             const bool has_cal0_read_flag = Utils::HasFlag(this->title_id, "cal_read");
-            if (bis_partition_id == BisStorageId_Boot0) {
+            if (bis_partition_id == FsBisStorageId_Boot0) {
                 storage = std::make_shared<IStorageInterface>(new Boot0Storage(bis_storage, this->title_id));
-            } else if (bis_partition_id == BisStorageId_Prodinfo) {
+            } else if (bis_partition_id == FsBisStorageId_CalibrationBinary) {
                 /* PRODINFO should *never* be writable. */
                 if (is_sysmodule || has_cal0_read_flag) {
-                    storage = std::make_shared<IStorageInterface>(new ROProxyStorage(bis_storage));
+                    storage = std::make_shared<IStorageInterface>(new ReadOnlyStorageAdapter(new ProxyStorage(bis_storage)));
                 } else {
                     /* Do not allow non-sysmodules to read *or* write CAL0. */
                     fsStorageClose(&bis_storage);
-                    return ResultFsPermissionDenied;
+                    rc = ResultFsPermissionDenied;
+                    return rc;
                 }
             } else {
                 if (is_sysmodule || has_bis_write_flag) {
                     /* Sysmodules should still be allowed to read and write. */
                     storage = std::make_shared<IStorageInterface>(new ProxyStorage(bis_storage));
                 } else if (Utils::IsHblTid(this->title_id) &&
-                    ((BisStorageId_BcPkg2_1 <= bis_partition_id && bis_partition_id <= BisStorageId_BcPkg2_6) || bis_partition_id == BisStorageId_Boot1)) {
+                    ((FsBisStorageId_BootConfigAndPackage2NormalMain <= bis_partition_id && bis_partition_id <= FsBisStorageId_BootConfigAndPackage2RepairSub) ||
+                    bis_partition_id == FsBisStorageId_Boot1)) {
                     /* Allow HBL to write to boot1 (safe firm) + package2. */
                     /* This is needed to not break compatibility with ChoiDujourNX, which does not check for write access before beginning an update. */
                     /* TODO: get fixed so that this can be turned off without causing bricks :/ */
                     storage = std::make_shared<IStorageInterface>(new ProxyStorage(bis_storage));
                 } else {
                     /* Non-sysmodules should be allowed to read. */
-                    storage = std::make_shared<IStorageInterface>(new ROProxyStorage(bis_storage));
+                    storage = std::make_shared<IStorageInterface>(new ReadOnlyStorageAdapter(new ProxyStorage(bis_storage)));
                 }
             }
             if (out_storage.IsDomain()) {
@@ -346,9 +388,9 @@ Result FsMitmService::OpenDataStorageByCurrentProcess(Out<std::shared_ptr<IStora
             if (Utils::HasSdRomfsContent(this->title_id)) {
                 /* TODO: Is there a sensible path that ends in ".romfs" we can use?" */
                 if (R_SUCCEEDED(Utils::OpenSdFileForAtmosphere(this->title_id, "romfs.bin", FS_OPEN_READ, &data_file))) {
-                    storage = std::make_shared<IStorageInterface>(new LayeredRomFS(std::make_shared<RomInterfaceStorage>(data_storage), std::make_shared<RomFileStorage>(data_file), this->title_id));
+                    storage = std::make_shared<IStorageInterface>(new LayeredRomFS(std::make_shared<ReadOnlyStorageAdapter>(new ProxyStorage(data_storage)), std::make_shared<ReadOnlyStorageAdapter>(new FileStorage(new ProxyFile(data_file))), this->title_id));
                 } else {
-                    storage = std::make_shared<IStorageInterface>(new LayeredRomFS(std::make_shared<RomInterfaceStorage>(data_storage), nullptr, this->title_id));
+                    storage = std::make_shared<IStorageInterface>(new LayeredRomFS(std::make_shared<ReadOnlyStorageAdapter>(new ProxyStorage(data_storage)), nullptr, this->title_id));
                 }
                 if (out_storage.IsDomain()) {
                     out_domain_id = data_storage.s.object_id;
@@ -413,9 +455,9 @@ Result FsMitmService::OpenDataStorageByDataId(Out<std::shared_ptr<IStorageInterf
             if (Utils::HasSdRomfsContent(data_id)) {
                 /* TODO: Is there a sensible path that ends in ".romfs" we can use?" */
                 if (R_SUCCEEDED(Utils::OpenSdFileForAtmosphere(data_id, "romfs.bin", FS_OPEN_READ, &data_file))) {
-                    storage = std::make_shared<IStorageInterface>(new LayeredRomFS(std::make_shared<RomInterfaceStorage>(data_storage), std::make_shared<RomFileStorage>(data_file), data_id));
+                    storage = std::make_shared<IStorageInterface>(new LayeredRomFS(std::make_shared<ReadOnlyStorageAdapter>(new ProxyStorage(data_storage)), std::make_shared<ReadOnlyStorageAdapter>(new FileStorage(new ProxyFile(data_file))), data_id));
                 } else {
-                    storage = std::make_shared<IStorageInterface>(new LayeredRomFS(std::make_shared<RomInterfaceStorage>(data_storage), nullptr, data_id));
+                    storage = std::make_shared<IStorageInterface>(new LayeredRomFS(std::make_shared<ReadOnlyStorageAdapter>(new ProxyStorage(data_storage)), nullptr, data_id));
                 }
                 if (out_storage.IsDomain()) {
                     out_domain_id = data_storage.s.object_id;

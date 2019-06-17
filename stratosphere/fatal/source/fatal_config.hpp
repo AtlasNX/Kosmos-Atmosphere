@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -29,6 +29,8 @@ struct FatalConfig {
     const char *error_msg;
     const char *error_desc;
     const char *quest_desc;
+    u64 fatal_auto_reboot_interval;
+    bool is_auto_reboot_enabled;
 };
 
 IEvent *GetFatalSettingsEvent();

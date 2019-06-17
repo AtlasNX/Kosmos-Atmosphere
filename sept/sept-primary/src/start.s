@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -93,6 +93,10 @@ ipatch_word:
 .global jump_to_main
 .type   jump_to_main, %function
 jump_to_main:
+    /* Insert 0x40 of NOPs, for version compatibility. */
+.rept 16
+    nop
+.endr
     /* Just jump to main */
     ldr sp, =__stack_top__
     b main

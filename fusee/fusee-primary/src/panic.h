@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -27,6 +27,45 @@
 #define PANIC_COLOR_BOOTLOADER_SAFEMODE 0xFFFFAA /* Removed */
 
 #define PANIC_CODE_SAFEMODE 0x00000020
+
+
+#define AMS_FATAL_ERROR_MAX_STACKTRACE 0x20
+#define AMS_FATAL_ERROR_MAX_STACKDUMP 0x100
+
+/* Atmosphere reboot-to-fatal-error. */
+typedef struct {
+    uint32_t magic;
+    uint32_t error_desc;
+    uint64_t title_id;
+    union {
+        uint64_t gprs[32];
+        struct {
+            uint64_t _gprs[29];
+            uint64_t fp;
+            uint64_t lr;
+            uint64_t sp;
+        };
+    };
+    uint64_t pc;
+    uint64_t module_base;
+    uint32_t pstate;
+    uint32_t afsr0;
+    uint32_t afsr1;
+    uint32_t esr;
+    uint64_t far;
+    uint64_t report_identifier; /* Normally just system tick. */
+    uint64_t stack_trace_size;
+    uint64_t stack_dump_size;
+    uint64_t stack_trace[AMS_FATAL_ERROR_MAX_STACKTRACE];
+    uint8_t stack_dump[AMS_FATAL_ERROR_MAX_STACKDUMP];
+} atmosphere_fatal_error_ctx;
+
+/* "AFE1" */
+#define ATMOSPHERE_REBOOT_TO_FATAL_MAGIC 0x31454641
+/* "AFE0" */
+#define ATMOSPHERE_REBOOT_TO_FATAL_MAGIC_0 0x30454641
+
+#define ATMOSPHERE_FATAL_ERROR_CONTEXT ((volatile atmosphere_fatal_error_ctx *)(0x4003E000))
 
 void check_and_display_panic(void);
 __attribute__ ((noreturn)) void panic(uint32_t code);

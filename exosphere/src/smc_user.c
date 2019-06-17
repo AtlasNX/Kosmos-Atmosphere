@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -51,6 +51,7 @@ static bool is_user_keyslot_valid(unsigned int keyslot) {
         case ATMOSPHERE_TARGET_FIRMWARE_600:
         case ATMOSPHERE_TARGET_FIRMWARE_620:
         case ATMOSPHERE_TARGET_FIRMWARE_700:
+        case ATMOSPHERE_TARGET_FIRMWARE_800:
         default:
             return keyslot <= 5;
     }

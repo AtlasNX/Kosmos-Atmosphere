@@ -220,10 +220,8 @@ SECTIONS
        ======================= */
     PROVIDE(__ams_mitm_kip_start__ = ams_mitm_kip - __start__);
     PROVIDE(__ams_mitm_kip_size__ = ams_mitm_kip_end - ams_mitm_kip);
-    PROVIDE(__boot_100_kip_start__ = boot_100_kip - __start__);
-    PROVIDE(__boot_100_kip_size__ = boot_100_kip_end - boot_100_kip);
-    PROVIDE(__boot_200_kip_start__ = boot_200_kip - __start__);
-    PROVIDE(__boot_200_kip_size__ = boot_200_kip_end - boot_200_kip);
+    PROVIDE(__boot_kip_start__ = boot_kip - __start__);
+    PROVIDE(__boot_kip_size__ = boot_kip_end - boot_kip);
     PROVIDE(__exosphere_bin_start__ = exosphere_bin - __start__);
     PROVIDE(__exosphere_bin_size__ = exosphere_bin_end - exosphere_bin);
     PROVIDE(__fusee_primary_bin_start__ = fusee_primary_bin - __start__);
@@ -242,8 +240,12 @@ SECTIONS
     PROVIDE(__sept_secondary_enc_size__ = sept_secondary_enc_end - sept_secondary_enc);
     PROVIDE(__sm_kip_start__ = sm_kip - __start__);
     PROVIDE(__sm_kip_size__ = sm_kip_end - sm_kip);
+    PROVIDE(__spl_kip_start__ = spl_kip - __start__);
+    PROVIDE(__spl_kip_size__ = spl_kip_end - spl_kip);
     PROVIDE(__splash_screen_bmp_start__ = splash_screen_bmp - __start__);
     PROVIDE(__splash_screen_bmp_size__ = splash_screen_bmp_end - splash_screen_bmp);
     PROVIDE(__thermosphere_bin_start__ = thermosphere_bin - __start__);
     PROVIDE(__thermosphere_bin_size__ = thermosphere_bin_end - thermosphere_bin);
+    PROVIDE(__emummc_kip_start__ = emummc_kip - __start__);
+    PROVIDE(__emummc_kip_size__ = emummc_kip_end - emummc_kip);
 }

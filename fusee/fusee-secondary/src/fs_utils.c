@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -47,4 +47,22 @@ size_t dump_to_file(const void *src, size_t src_size, const char *filename) {
         fclose(file);
         return sz;
     }
+}
+
+bool is_valid_folder(const char *path) {
+    struct stat st;
+    if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+        return true;
+    }
+    
+    return false;
+}
+
+bool is_valid_file(const char *path) {
+    struct stat st;
+    if (stat(path, &st) == 0 && S_ISREG(st.st_mode)) {
+        return true;
+    }
+    
+    return false;
 }

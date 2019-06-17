@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -18,10 +18,10 @@
 #define ATMOSPHERE_VERSION_H
 
 #define ATMOSPHERE_RELEASE_VERSION_MAJOR    0
-#define ATMOSPHERE_RELEASE_VERSION_MINOR    8
-#define ATMOSPHERE_RELEASE_VERSION_MICRO    6
+#define ATMOSPHERE_RELEASE_VERSION_MINOR    9
+#define ATMOSPHERE_RELEASE_VERSION_MICRO    0
 
-#define ATMOSPHERE_SUPPORTED_HOS_VERSION_MAJOR 7
+#define ATMOSPHERE_SUPPORTED_HOS_VERSION_MAJOR 8
 #define ATMOSPHERE_SUPPORTED_HOS_VERSION_MINOR 0
 #define ATMOSPHERE_SUPPORTED_HOS_VERSION_MICRO 1
 

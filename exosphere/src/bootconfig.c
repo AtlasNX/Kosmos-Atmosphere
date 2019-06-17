@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -100,6 +100,8 @@ uint64_t bootconfig_get_value_for_sysctr0(void) {
 }
 
 uint64_t bootconfig_get_memory_arrangement(void) {
+    /* TODO: This function has changed pretty significantly since we implemented it. */
+    /* Not relevant for retail, but we'll probably want this to be accurate sooner or later. */
     if (bootconfig_is_debug_mode()) {
         if (fuse_get_dram_id() == 4) {
             if (LOADED_BOOTCONFIG->unsigned_config.data[0x23]) {
@@ -123,7 +125,7 @@ uint64_t bootconfig_get_memory_arrangement(void) {
     }
 }
 
-uint64_t bootconfig_get_kernel_memory_configuration(void) {
+uint64_t bootconfig_get_kernel_configuration(void) {
     if (bootconfig_is_debug_mode()) {
         uint64_t high_val = 0;
         if (fuse_get_dram_id() == 4) {

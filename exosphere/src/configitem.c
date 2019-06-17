@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -35,13 +35,14 @@
 #undef u8
 #undef u32
 
-static bool g_battery_profile = false;
+static bool g_hiz_mode_enabled = false;
 static bool g_debugmode_override_user = false, g_debugmode_override_priv = false;
+static bool g_enable_usermode_exception_handlers = true;
 
 uint32_t configitem_set(bool privileged, ConfigItem item, uint64_t value) {
     switch (item) {
-        case CONFIGITEM_BATTERYPROFILE:
-            g_battery_profile = (value != 0);
+        case CONFIGITEM_HIZMODE:
+            g_hiz_mode_enabled = (value != 0);
             break;
         case CONFIGITEM_NEEDS_REBOOT:
             /* Force a reboot, if requested. */
@@ -133,8 +134,12 @@ bool configitem_is_retail(void) {
     return is_retail != 0;
 }
 
-bool configitem_should_profile_battery(void) {
-    return g_battery_profile;
+bool configitem_is_hiz_mode_enabled(void) {
+    return g_hiz_mode_enabled;
+}
+
+void configitem_set_hiz_mode_enabled(bool enabled) {
+    g_hiz_mode_enabled = enabled;
 }
 
 bool configitem_is_debugmode_priv(void) {
@@ -157,6 +162,10 @@ uint64_t configitem_get_hardware_type(void) {
 void configitem_set_debugmode_override(bool user, bool priv) {
     g_debugmode_override_user = user;
     g_debugmode_override_priv = priv;
+}
+
+void configitem_disable_usermode_exception_handlers(void) {
+    g_enable_usermode_exception_handlers = false;
 }
 
 uint32_t configitem_get(bool privileged, ConfigItem item, uint64_t *p_outvalue) {
@@ -206,11 +215,18 @@ uint32_t configitem_get(bool privileged, ConfigItem item, uint64_t *p_outvalue) 
                 *p_outvalue = (int)(bootconfig_is_debug_mode());
             }
             break;
-        case CONFIGITEM_KERNELMEMORYCONFIGURATION:
-            *p_outvalue = bootconfig_get_kernel_memory_configuration();
+        case CONFIGITEM_KERNELCONFIGURATION:
+            {
+                uint64_t config = bootconfig_get_kernel_configuration();
+                /* Enable usermode exception handlers by default. */
+                if (g_enable_usermode_exception_handlers) {
+                    config |= KERNELCONFIGFLAG_ENABLE_USER_EXCEPTION_HANDLERS;
+                }
+                *p_outvalue = config;
+            }
             break;
-        case CONFIGITEM_BATTERYPROFILE:
-            *p_outvalue = (int)g_battery_profile;
+        case CONFIGITEM_HIZMODE:
+            *p_outvalue = (int)g_hiz_mode_enabled;
             break;
         case CONFIGITEM_ISQUESTUNIT:
             /* Added on 3.0, used to determine whether console is a kiosk unit. */

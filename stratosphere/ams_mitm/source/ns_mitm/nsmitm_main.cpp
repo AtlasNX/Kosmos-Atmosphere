@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -35,12 +35,12 @@ void NsMitmMain(void *arg) {
     Utils::WaitSdInitialized();
 
     /* Ensure we can talk to NS. */
-    {
+    DoWithSmSession([&]() {
         if (R_FAILED(nsInitialize())) {
             std::abort();
         }
         nsExit();
-    }
+    });
 
     /* Create server manager */
     auto server_manager = new WaitableManager(1);

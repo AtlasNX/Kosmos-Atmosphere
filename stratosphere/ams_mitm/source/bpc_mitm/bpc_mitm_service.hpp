@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -25,7 +25,7 @@ enum BpcCmd : u32 {
     BpcCmd_RebootSystem = 1,
 };
 
-class BpcMitmService : public IMitmServiceObject {      
+class BpcMitmService : public IMitmServiceObject {
     public:
         BpcMitmService(std::shared_ptr<Service> s, u64 pid) : IMitmServiceObject(s, pid) {
             /* ... */

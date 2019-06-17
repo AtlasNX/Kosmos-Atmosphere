@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -13,7 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
- 
+
 #include <cstdlib>
 #include <cstdint>
 #include <cstdio>
@@ -34,10 +34,21 @@ extern "C" {
     #define INNER_HEAP_SIZE 0x100000
     size_t nx_inner_heap_size = INNER_HEAP_SIZE;
     char   nx_inner_heap[INNER_HEAP_SIZE];
-    
+
     void __libnx_initheap(void);
     void __appInit(void);
     void __appExit(void);
+
+    /* Exception handling. */
+    alignas(16) u8 __nx_exception_stack[0x1000];
+    u64 __nx_exception_stack_size = sizeof(__nx_exception_stack);
+    void __libnx_exception_handler(ThreadExceptionDump *ctx);
+    u64 __stratosphere_title_id = TitleId_Creport;
+    void __libstratosphere_exception_handler(AtmosphereFatalErrorContext *ctx);
+}
+
+void __libnx_exception_handler(ThreadExceptionDump *ctx) {
+    StratosphereCrashHandler(ctx);
 }
 
 
@@ -55,19 +66,16 @@ void __libnx_initheap(void) {
 
 void __appInit(void) {
     Result rc;
-    
+
     SetFirmwareVersionForLibnx();
 
-    rc = smInitialize();
-    if (R_FAILED(rc)) {
-        fatalSimple(MAKERESULT(Module_Libnx, LibnxError_InitFail_SM));
-    }
-    
-    rc = fsInitialize();
-    if (R_FAILED(rc)) {
-        fatalSimple(MAKERESULT(Module_Libnx, LibnxError_InitFail_FS));
-    }
-    
+    DoWithSmSession([&]() {
+        rc = fsInitialize();
+        if (R_FAILED(rc)) {
+            fatalSimple(MAKERESULT(Module_Libnx, LibnxError_InitFail_FS));
+        }
+    });
+
     rc = fsdevMountSdmc();
     if (R_FAILED(rc)) {
         fatalSimple(MAKERESULT(Module_Libnx, LibnxError_InitFail_FS));
@@ -78,7 +86,6 @@ void __appExit(void) {
     /* Cleanup services. */
     fsdevUnmountAll();
     fsExit();
-    smExit();
 }
 
 static u64 creport_parse_u64(char *s) {
@@ -107,37 +114,39 @@ int main(int argc, char **argv) {
             return 0;
         }
     }
-    
+
     /* Parse crashed PID. */
     u64 crashed_pid = creport_parse_u64(argv[0]);
-    
+
     /* Try to debug the crashed process. */
     g_Creport.BuildReport(crashed_pid, argv[1][0] == '1');
     if (g_Creport.WasSuccessful()) {
         g_Creport.SaveReport();
-        
-        if (R_SUCCEEDED(nsdevInitialize())) {
-            nsdevTerminateProcess(crashed_pid);
-            nsdevExit();
-        }
-        
+
+        DoWithSmSession([&]() {
+            if (R_SUCCEEDED(nsdevInitialize())) {
+                nsdevTerminateProcess(crashed_pid);
+                nsdevExit();
+            }
+        });
+
         /* Don't fatal if we have extra info. */
-        if (kernelAbove500()) {
+        if ((GetRuntimeFirmwareVersion() >= FirmwareVersion_500)) {
             if (g_Creport.IsApplication()) {
                 return 0;
             }
         } else if (argv[1][0] == '1') {
             return 0;
         }
-        
+
         /* Also don't fatal if we're a user break. */
         if (g_Creport.IsUserBreak()) {
             return 0;
         }
-        
+
         FatalContext *ctx = g_Creport.GetFatalContext();
-        
+
         fatalWithContext(g_Creport.GetResult(), FatalType_ErrorScreen, ctx);
     }
-    
+
 }

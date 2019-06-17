@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -27,9 +27,7 @@ Result ProcessManagerService::CreateProcess(Out<MovedHandle> proc_h, u64 index, 
     Registration::TidSid tid_sid;
     LaunchQueue::LaunchItem *launch_item;
     char nca_path[FS_MAX_PATH] = {0};
-    
-    fprintf(stderr, "CreateProcess(%016lx, %08x, %08x);\n", index, flags, reslimit_h.handle);
-    
+
     ON_SCOPE_EXIT {
         /* Loader doesn't persist the copied resource limit handle. */
         svcCloseHandle(reslimit_h.handle);

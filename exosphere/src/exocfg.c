@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -74,4 +74,20 @@ unsigned int exosphere_should_override_debugmode_user(void) {
     }
     
     return EXOSPHERE_CHECK_FLAG(EXOSPHERE_FLAG_IS_DEBUGMODE_USER);
+}
+
+unsigned int exosphere_should_disable_usermode_exception_handlers(void) {
+    if (!g_has_loaded_config) {
+        generic_panic();
+    }
+    
+    return EXOSPHERE_CHECK_FLAG(EXOSPHERE_FLAG_DISABLE_USERMODE_EXCEPTION_HANDLERS);
+}
+
+const exo_emummc_config_t *exosphere_get_emummc_config(void) {
+    if (!g_has_loaded_config) {
+        generic_panic();
+    }
+
+    return &g_exosphere_cfg.emummc_cfg;
 }

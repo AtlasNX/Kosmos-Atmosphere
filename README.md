@@ -19,6 +19,16 @@ Atmosphère consists of multiple components, each of which replaces/modifies a d
 * Stratosphère: Custom Sysmodule(s), both Rosalina style to extend the kernel/provide new features, and of the loader reimplementation style to hook important system actions
 * Troposphère: Application-level Horizon OS patches, used to implement desirable CFW features
 
+Licensing
+=====
+
+This software is licensed under the terms of the GPLv2, with exemptions for specific projects noted below.
+
+You can find a copy of the license in the [LICENSE file](LICENSE).
+
+Exemptions:
+* The [yuzu emulator project](https://github.com/yuzu-emu/yuzu) is exempt from GPLv2 licensing and may (at its option) instead license any source code authored for the Atmosphère project as GPLv2 or later.
+
 Credits
 =====
 
@@ -32,6 +42,7 @@ In no particular order, we credit the following for their invaluable contributio
 * __Marcus Geelnard__ for the [bcl-1.2.0](https://sourceforge.net/projects/bcl/files/bcl/bcl-1.2.0) library.
 * __naehrwert__ and __st4rk__ for the original [hekate](https://github.com/nwert/hekate) project and its hwinit code base.
 * __CTCaer__ for the continued [hekate](https://github.com/CTCaer/hekate) project's fork and the [minerva_tc](https://github.com/CTCaer/minerva_tc) project.
+* __m4xw__ for development of the [emuMMC](https://github.com/m4xw/emummc) project.
 * __Riley__ for suggesting "Atmosphere" as a Horizon OS reimplementation+customization project name.
 * __hedgeberg__ for research and hardware testing.
 * __lioncash__ for code cleanup and general improvements.

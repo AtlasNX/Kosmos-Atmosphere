@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -16,6 +16,7 @@
  
 #include <stdio.h>
 #include <stdlib.h>
+#include <atmosphere.h>
 #include "utils.h"
 #include "masterkey.h"
 #include "stratosphere.h"
@@ -35,7 +36,7 @@
 static void package2_decrypt(package2_header_t *package2);
 static size_t package2_get_src_section(void **section, package2_header_t *package2, unsigned int id);
 static size_t package2_get_thermosphere(void **thermosphere);
-static ini1_header_t *package2_rebuild_ini1(ini1_header_t *ini1, uint32_t target_firmware);
+static ini1_header_t *package2_rebuild_ini1(ini1_header_t *ini1, uint32_t target_firmware, void *emummc, size_t emummc_size);
 static void package2_append_section(unsigned int id, package2_header_t *package2, void *data, size_t size);
 static void package2_fixup_header_and_section_hashes(package2_header_t *package2, size_t size);
 
@@ -43,7 +44,7 @@ static inline size_t align_to_4(size_t s) {
     return ((s + 3) >> 2) << 2;
 }
 
-void package2_rebuild_and_copy(package2_header_t *package2, uint32_t target_firmware) {
+void package2_rebuild_and_copy(package2_header_t *package2, uint32_t target_firmware, void *emummc, size_t emummc_size) {
     package2_header_t *rebuilt_package2;
     size_t rebuilt_package2_size;
     void *kernel;
@@ -86,12 +87,24 @@ void package2_rebuild_and_copy(package2_header_t *package2, uint32_t target_firm
     }
 
     /* Perform any patches we want to the NX kernel. */
-    package2_patch_kernel(kernel, kernel_size, is_sd_kernel);
-
+    package2_patch_kernel(kernel, kernel_size, is_sd_kernel, (void *)&orig_ini1);
+    
+    /* Ensure we know where embedded INI is if present, and we don't if not. */
+    if ((target_firmware < ATMOSPHERE_TARGET_FIRMWARE_800 && orig_ini1 != NULL) || 
+        (target_firmware >= ATMOSPHERE_TARGET_FIRMWARE_800 && orig_ini1 == NULL)) {
+        fatal_error("Error: inappropriate kernel embedded ini context");
+    }
+    
     print(SCREEN_LOG_LEVEL_DEBUG, "Rebuilding the INI1 section...\n");
-    package2_get_src_section((void *)&orig_ini1, package2, PACKAGE2_SECTION_INI1);
+    if (target_firmware < ATMOSPHERE_TARGET_FIRMWARE_800) {
+        package2_get_src_section((void *)&orig_ini1, package2, PACKAGE2_SECTION_INI1);
+    } else {
+        /* On 8.0.0, place INI1 right after kernelldr for our sanity. */
+        package2->metadata.section_offsets[PACKAGE2_SECTION_INI1] = package2->metadata.section_offsets[PACKAGE2_SECTION_KERNEL] + package2->metadata.section_sizes[PACKAGE2_SECTION_KERNEL];
+    }
+
     /* Perform any patches to the INI1, rebuilding it (This is where our built-in sysmodules will be added.) */
-    rebuilt_ini1 = package2_rebuild_ini1(orig_ini1, target_firmware);
+    rebuilt_ini1 = package2_rebuild_ini1(orig_ini1, target_firmware, emummc, emummc_size);
     print(SCREEN_LOG_LEVEL_DEBUG, "Rebuilt INI1...\n");
 
     /* Allocate the rebuilt package2. */
@@ -187,10 +200,15 @@ static bool package2_validate_metadata(package2_meta_t *metadata, uint8_t data[]
         }
 
         /* Ensure no overlap with later sections. */
-        for (unsigned int later_section = section + 1; later_section < PACKAGE2_SECTION_MAX; later_section++) {
-            uint32_t later_section_end = metadata->section_offsets[later_section] + metadata->section_sizes[later_section];
-            if (overlaps(metadata->section_offsets[section], section_end, metadata->section_offsets[later_section], later_section_end)) {
-                return false;
+        if (metadata->section_sizes[section] != 0) {
+            for (unsigned int later_section = section + 1; later_section < PACKAGE2_SECTION_MAX; later_section++) {
+                if (metadata->section_sizes[later_section] == 0) {
+                    continue;
+                }
+                uint32_t later_section_end = metadata->section_offsets[later_section] + metadata->section_sizes[later_section];
+                if (overlaps(metadata->section_offsets[section], section_end, metadata->section_offsets[later_section], later_section_end)) {
+                    return false;
+                }
             }
         }
 
@@ -299,7 +317,7 @@ static size_t package2_get_thermosphere(void **thermosphere) {
     return 0;
 }
 
-static ini1_header_t *package2_rebuild_ini1(ini1_header_t *ini1, uint32_t target_firmware) {
+static ini1_header_t *package2_rebuild_ini1(ini1_header_t *ini1, uint32_t target_firmware, void *emummc, size_t emummc_size) {
     /* TODO: Do we want to support loading another INI from sd:/whatever/INI1.bin? */
     ini1_header_t *inis_to_merge[STRATOSPHERE_INI1_MAX] = {0};
     ini1_header_t *merged;
@@ -309,7 +327,7 @@ static ini1_header_t *package2_rebuild_ini1(ini1_header_t *ini1, uint32_t target
     inis_to_merge[STRATOSPHERE_INI1_PACKAGE2] = ini1;
 
     /* Merge all of the INI1s. */
-    merged = stratosphere_merge_inis(inis_to_merge, STRATOSPHERE_INI1_MAX);
+    merged = stratosphere_merge_inis(inis_to_merge, STRATOSPHERE_INI1_MAX, emummc, emummc_size);
 
     /* Free temporary buffer. */
     stratosphere_free_ini1();

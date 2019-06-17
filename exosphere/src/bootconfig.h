@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -20,6 +20,14 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "memory_map.h"
+
+/* This is kind of ConfigItem, but it's stored in BootConfig, so... */
+typedef enum {
+    KERNELCONFIGFLAG_INITIALIZE_MEMORY_TO_PATTERN   = (1 << 0),
+    KERNELCONFIGFLAG_ENABLE_USER_EXCEPTION_HANDLERS = (1 << 1),
+    KERNELCONFIGFLAG_ENABLE_USER_PMU_ACCESS         = (1 << 2),
+    KERNELCONFIGFLAG_CALL_SMC_PANIC_ON_KERNEL_ERROR = (1 << 8),
+} KernelConfigFlag;
 
 /* This provides management for Switch BootConfig. */
 
@@ -78,7 +86,7 @@ bool bootconfig_take_extabt_serror_to_el3(void);
 uint64_t bootconfig_get_value_for_sysctr0(void);
 
 uint64_t bootconfig_get_memory_arrangement(void);
-uint64_t bootconfig_get_kernel_memory_configuration(void);
+uint64_t bootconfig_get_kernel_configuration(void);
 
 bool bootconfig_is_recovery_boot(void);
 uint64_t bootconfig_get_boot_reason(void);

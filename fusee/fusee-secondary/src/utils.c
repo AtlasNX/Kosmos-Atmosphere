@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -168,9 +168,9 @@ __attribute__((noreturn)) void fatal_error(const char *fmt, ...) {
 
 __attribute__((noinline)) bool overlaps(uint64_t as, uint64_t ae, uint64_t bs, uint64_t be)
 {
-    if(as <= bs && bs <= ae)
+    if(as <= bs && bs < ae)
         return true;
-    if(bs <= as && as <= be)
+    if(bs <= as && as < be)
         return true;
     return false;
 }

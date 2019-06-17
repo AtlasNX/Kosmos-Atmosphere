@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018 Atmosphère-NX
+ * Copyright (c) 2018-2019 Atmosphère-NX
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -18,6 +18,20 @@
 #define FUSEE_NX_BOOT_H
 
 #include "utils.h"
+
+#define EMUMMC_ENABLED_KEY "emummc_enabled"
+#define EMUMMC_SECTOR_KEY "emummc_sector"
+#define EMUMMC_PATH_KEY "emummc_path"
+#define EMUMMC_NINTENDO_PATH_KEY "emummc_nintendo_path"
+#define EMUMMC_ID_KEY "emummc_id"
+
+typedef struct {
+    bool enabled;
+    uint32_t id;
+    uint64_t sector;
+    char path[0x80];
+    char nintendo_path[0x80];
+} emummc_config_t;
 
 #define MAILBOX_NX_BOOTLOADER_BASE_100_620 0x40002E00
 #define MAILBOX_NX_BOOTLOADER_BASE_700     0x40000000
